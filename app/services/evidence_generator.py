@@ -17,7 +17,9 @@ class EvidenceGenerator:
     """생성형 모델을 사용할 수 있으면 사용하고, 아니면 안전한 템플릿을 사용한다."""
 
     def __init__(self, model_name: Optional[str] = None) -> None:
-        self.model_name = model_name or os.getenv("LLM_MODEL", "gpt-4o-mini")
+        self.base_url = os.getenv("OPENAI_BASE_URL")
+        default_model = "openai/gpt-4o-mini" if self._uses_openrouter() else "gpt-4o-mini"
+        self.model_name = model_name or os.getenv("LLM_MODEL", default_model)
 
     def generate(
         self,
@@ -73,7 +75,10 @@ JSON:
 {json.dumps(context, ensure_ascii=False, indent=2)}
 """
 
-        client = OpenAI()
+        client = OpenAI(
+            base_url=self.base_url,
+            default_headers=self._default_headers(),
+        )
         response = client.chat.completions.create(
             model=self.model_name,
             messages=[
@@ -83,6 +88,26 @@ JSON:
             temperature=0.2,
         )
         return response.choices[0].message.content or ""
+
+    def _uses_openrouter(self) -> bool:
+        """OpenRouter 호환 엔드포인트를 사용하는지 확인한다."""
+        return bool(self.base_url and "openrouter.ai" in self.base_url)
+
+    def _default_headers(self) -> dict[str, str]:
+        """OpenRouter에서 권장하는 선택 헤더를 구성한다."""
+        if not self._uses_openrouter():
+            return {}
+
+        headers: dict[str, str] = {}
+        referer = os.getenv("OPENROUTER_HTTP_REFERER")
+        title = os.getenv("OPENROUTER_APP_TITLE")
+
+        if referer:
+            headers["HTTP-Referer"] = referer
+        if title:
+            headers["X-Title"] = title
+
+        return headers
 
     def _generate_template(
         self,

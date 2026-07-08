@@ -109,4 +109,13 @@ ws://127.0.0.1:8000/ws/calls/analyze
 
 ### 생성형 핵심근거 생성
 
-`OPENAI_API_KEY`가 설정되어 있으면 `app/services/evidence_generator.py`에서 OpenAI SDK를 사용해 핵심근거를 생성합니다. 설정이 없거나 호출에 실패하면 템플릿 기반 핵심근거를 반환합니다.
+`OPENAI_API_KEY`가 설정되어 있으면 `app/services/evidence_generator.py`에서 OpenAI 호환 SDK를 사용해 핵심근거를 생성합니다. 설정이 없거나 호출에 실패하면 템플릿 기반 핵심근거를 반환합니다.
+
+OpenRouter 키를 사용할 경우 `.env`를 아래처럼 설정합니다.
+
+```env
+OPENAI_API_KEY=sk-or-v1...
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=openai/gpt-4o-mini
+OPENROUTER_APP_TITLE=VoiceGuard AI
+```
