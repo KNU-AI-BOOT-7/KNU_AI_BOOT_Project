@@ -42,6 +42,25 @@ def init_db() -> None:
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS training_case_turns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id INTEGER NOT NULL,
+                turn_index INTEGER NOT NULL,
+                role TEXT NOT NULL DEFAULT 'unknown',
+                text TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (case_id) REFERENCES training_cases(id) ON DELETE CASCADE
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_training_case_turns_case_id
+            ON training_case_turns(case_id)
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS call_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_id INTEGER,

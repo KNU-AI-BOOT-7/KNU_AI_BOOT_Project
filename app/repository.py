@@ -16,11 +16,14 @@ from app.schemas import (
     NotificationLog,
     TrainingCase,
     TrainingCaseCreate,
+    TrainingCaseTurn,
+    TrainingCaseTurnCreate,
 )
 
 
 def insert_training_case(case: TrainingCaseCreate) -> int:
     """학습 사례 1건을 저장하고 DB id를 반환한다."""
+    case = _normalize_training_case_text(case)
     with get_connection() as connection:
         cursor = connection.execute(
             """
@@ -29,7 +32,9 @@ def insert_training_case(case: TrainingCaseCreate) -> int:
             """,
             (case.external_id.strip(), case.text.strip(), case.label, case.source.strip()),
         )
-        return int(cursor.lastrowid)
+        case_id = int(cursor.lastrowid)
+        _insert_training_case_turns(connection, case_id, case.turns)
+        return case_id
 
 
 def get_training_case(case_id: int) -> TrainingCase:
@@ -47,7 +52,9 @@ def get_training_case(case_id: int) -> TrainingCase:
     if row is None:
         raise ValueError(f"case_id={case_id} 학습 사례를 찾을 수 없습니다.")
 
-    return TrainingCase(**dict(row))
+    data = dict(row)
+    data["turns"] = list_training_case_turns(case_id)
+    return TrainingCase(**data)
 
 
 def insert_training_cases(cases: list[TrainingCaseCreate]) -> int:
@@ -55,19 +62,22 @@ def insert_training_cases(cases: list[TrainingCaseCreate]) -> int:
     if not cases:
         return 0
 
-    rows = [
-        (case.external_id.strip(), case.text.strip(), case.label, case.source.strip())
-        for case in cases
-    ]
+    inserted_count = 0
     with get_connection() as connection:
-        connection.executemany(
-            """
-            INSERT INTO training_cases(external_id, text, label, source)
-            VALUES (?, ?, ?, ?)
-            """,
-            rows,
-        )
-    return len(rows)
+        for case in cases:
+            case = _normalize_training_case_text(case)
+            cursor = connection.execute(
+                """
+                INSERT INTO training_cases(external_id, text, label, source)
+                VALUES (?, ?, ?, ?)
+                """,
+                (case.external_id.strip(), case.text.strip(), case.label, case.source.strip()),
+            )
+            case_id = int(cursor.lastrowid)
+            _insert_training_case_turns(connection, case_id, case.turns)
+            inserted_count += 1
+
+    return inserted_count
 
 
 def list_training_cases(limit: int = 100) -> list[TrainingCase]:
@@ -83,7 +93,7 @@ def list_training_cases(limit: int = 100) -> list[TrainingCase]:
             (limit,),
         ).fetchall()
 
-    return [TrainingCase(**dict(row)) for row in rows]
+    return [_build_training_case(dict(row)) for row in rows]
 
 
 def list_all_training_cases() -> list[TrainingCase]:
@@ -97,7 +107,23 @@ def list_all_training_cases() -> list[TrainingCase]:
             """
         ).fetchall()
 
-    return [TrainingCase(**dict(row)) for row in rows]
+    return [_build_training_case(dict(row)) for row in rows]
+
+
+def list_training_case_turns(case_id: int) -> list[TrainingCaseTurn]:
+    """학습 사례에 속한 발화를 순서대로 조회한다."""
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, case_id, turn_index, role, text, created_at
+            FROM training_case_turns
+            WHERE case_id = ?
+            ORDER BY turn_index ASC, id ASC
+            """,
+            (case_id,),
+        ).fetchall()
+
+    return [TrainingCaseTurn(**dict(row)) for row in rows]
 
 
 def parse_training_cases_json(raw_bytes: bytes) -> tuple[list[TrainingCaseCreate], int]:
@@ -106,8 +132,13 @@ def parse_training_cases_json(raw_bytes: bytes) -> tuple[list[TrainingCaseCreate
 
     권장 형식:
     [
-      {"id": "normal_S0001", "text": "...", "label": 0, "source": "financial_consulting"},
-      {"id": "phishing_001", "text": "...", "label": 1, "source": "phishing_case"}
+      {
+        "id": "normal_S0001",
+        "label": 0,
+        "source": "financial_consulting",
+        "text": "speaker_a: ... speaker_b: ...",
+        "turns": [{"turn_index": 1, "role": "speaker_a", "text": "..."}]
+      }
     ]
     """
     payload: Any = json.loads(raw_bytes.decode("utf-8-sig"))
@@ -124,16 +155,22 @@ def parse_training_cases_json(raw_bytes: bytes) -> tuple[list[TrainingCaseCreate
             skipped_count += 1
             continue
 
-        text = str(item.get("text", item.get("content", ""))).strip()
-        raw_label = item.get("label", item.get("is_phishing"))
-        label = _normalize_label(raw_label)
-
         try:
+            turns = _parse_training_turns(item.get("turns", []))
+            text = str(item.get("text", item.get("content", ""))).strip()
+            if not text and turns:
+                text = _build_training_text_from_turns(turns)
+            if not text:
+                raise ValueError("text 또는 turns가 필요합니다.")
+
+            raw_label = item.get("label", item.get("is_phishing"))
+            label = _normalize_label(raw_label)
             case = TrainingCaseCreate(
                 external_id=str(item.get("external_id", item.get("id", ""))),
                 text=text,
                 label=label,
                 source=str(item.get("source", "")),
+                turns=turns,
             )
         except Exception:
             skipped_count += 1
@@ -142,6 +179,83 @@ def parse_training_cases_json(raw_bytes: bytes) -> tuple[list[TrainingCaseCreate
         cases.append(case)
 
     return cases, skipped_count
+
+
+def _build_training_case(row: dict) -> TrainingCase:
+    """학습 사례 row에 발화 목록을 붙여 스키마 객체로 만든다."""
+    row["turns"] = list_training_case_turns(int(row["id"]))
+    return TrainingCase(**row)
+
+
+def _normalize_training_case_text(case: TrainingCaseCreate) -> TrainingCaseCreate:
+    """text가 비어 있으면 turns를 합쳐 학습/RAG용 text를 만든다."""
+    text = case.text.strip()
+    if not text and case.turns:
+        text = _build_training_text_from_turns(case.turns)
+
+    if not text:
+        raise ValueError("학습 사례에는 text 또는 turns가 필요합니다.")
+
+    return TrainingCaseCreate(
+        external_id=case.external_id,
+        text=text,
+        label=case.label,
+        source=case.source,
+        turns=case.turns,
+    )
+
+
+def _insert_training_case_turns(
+    connection,
+    case_id: int,
+    turns: list[TrainingCaseTurnCreate],
+) -> None:
+    """학습 사례 발화 목록을 저장한다."""
+    if not turns:
+        return
+
+    connection.executemany(
+        """
+        INSERT INTO training_case_turns(case_id, turn_index, role, text)
+        VALUES (?, ?, ?, ?)
+        """,
+        [
+            (case_id, turn.turn_index, turn.role.strip(), turn.text.strip())
+            for turn in turns
+        ],
+    )
+
+
+def _parse_training_turns(raw_turns: Any) -> list[TrainingCaseTurnCreate]:
+    """JSON의 turns 값을 학습 사례 발화 스키마로 변환한다."""
+    if raw_turns in (None, ""):
+        return []
+
+    if not isinstance(raw_turns, list):
+        raise ValueError("turns는 리스트여야 합니다.")
+
+    turns: list[TrainingCaseTurnCreate] = []
+    for index, item in enumerate(raw_turns, start=1):
+        if not isinstance(item, dict):
+            raise ValueError("turns 항목은 객체여야 합니다.")
+
+        turn_index = item.get("turn_index", item.get("turn", index))
+        text = str(item.get("text", item.get("content", ""))).strip()
+        role = str(item.get("role", item.get("speaker", "unknown"))).strip()
+        turns.append(
+            TrainingCaseTurnCreate(
+                turn_index=int(turn_index),
+                role=role or "unknown",
+                text=text,
+            )
+        )
+
+    return turns
+
+
+def _build_training_text_from_turns(turns: list[TrainingCaseTurnCreate]) -> str:
+    """turns만 있는 JSON을 RAG 검색용 text로 합친다."""
+    return "\n".join(f"{turn.role}: {turn.text}" for turn in turns)
 
 
 def create_call_log(call: CallLogCreate) -> CallLog:

@@ -7,13 +7,30 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class TrainingCaseTurnCreate(BaseModel):
+    """학습 사례 안의 단일 발화."""
+
+    turn_index: int = Field(..., ge=1, description="통화 안에서의 발화 순서")
+    role: str = Field("unknown", description="speaker_a, speaker_b, caller 등 발화자 구분")
+    text: str = Field(..., min_length=1, description="발화 내용")
+
+
 class TrainingCaseCreate(BaseModel):
     """학습과 RAG 검색에 사용할 단일 사례."""
 
     external_id: str = Field("", description="원본 데이터의 세션 또는 통화 ID")
-    text: str = Field(..., min_length=1, description="학습/RAG에 사용할 정제 텍스트")
+    text: str = Field("", description="학습/RAG에 사용할 정제 텍스트. 비어 있으면 turns로 자동 생성")
     label: int = Field(..., ge=0, le=1, description="정상은 0, 보이스피싱은 1")
     source: str = Field("", description="데이터 출처")
+    turns: list[TrainingCaseTurnCreate] = Field(default_factory=list, description="통화 내부 발화 목록")
+
+
+class TrainingCaseTurn(TrainingCaseTurnCreate):
+    """DB에 저장된 학습 사례 발화."""
+
+    id: int
+    case_id: int
+    created_at: str
 
 
 class TrainingCase(TrainingCaseCreate):
@@ -21,6 +38,7 @@ class TrainingCase(TrainingCaseCreate):
 
     id: int
     created_at: str
+    turns: list[TrainingCaseTurn] = Field(default_factory=list)
 
 
 class ImportResult(BaseModel):

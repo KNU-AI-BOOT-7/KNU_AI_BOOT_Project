@@ -29,16 +29,26 @@
 {
   "cases": [
     {
-      "id": "phishing_sample_001",
-      "text": "검찰입니다. 고객님 계좌가 범죄에 연루되어 안전계좌로 이체해야 합니다.",
+      "id": "phishing_call_001",
       "label": 1,
-      "source": "sample"
+      "turns": [
+        {
+          "turn_index": 1,
+          "role": "speaker_a",
+          "text": "검찰입니다."
+        },
+        {
+          "turn_index": 2,
+          "role": "speaker_b",
+          "text": "네?"
+        }
+      ]
     }
   ]
 }
 ```
 
-`label`은 보이스피싱이면 `1`, 정상이면 `0`입니다. 학습에는 `text`와 `label`이 필수이고, `id`와 `source`는 원본 추적을 위한 권장 필드입니다.
+`label`은 보이스피싱이면 `1`, 정상이면 `0`입니다. `id`는 통화/세션 한 건을 구분하는 값이고, 한 통화 안의 발화는 `turns[].turn_index`로 구분합니다. `text` 필드를 직접 넣지 않아도 서버가 `turns`를 합쳐 RAG 검색용 텍스트를 자동 생성합니다.
 
 ### 실행 방법
 
