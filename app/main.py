@@ -27,8 +27,6 @@ from app.schemas import (
     CallMessageCreate,
     ImportResult,
     NotificationCreate,
-    RagDetectRequest,
-    RagDetectResponse,
     TrainingCase,
     TrainingCaseCreate,
 )
@@ -98,15 +96,6 @@ async def import_training_cases_json(file: UploadFile = File(...)) -> ImportResu
 def get_training_cases(limit: int = 100) -> list[TrainingCase]:
     """최근 저장된 학습 사례를 반환한다."""
     return list_training_cases(limit=limit)
-
-
-@app.post("/detect/rag", response_model=RagDetectResponse)
-def detect_rag(request: RagDetectRequest) -> RagDetectResponse:
-    """DB 기반 RAG와 생성 근거를 사용해 보이스피싱 위험도를 탐지한다."""
-    try:
-        return detector.detect(text=request.text, top_k=request.top_k)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.websocket("/ws/calls/analyze")

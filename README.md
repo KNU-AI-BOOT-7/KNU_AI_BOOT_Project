@@ -72,22 +72,11 @@ curl -X POST "http://127.0.0.1:8000/training-cases/import-json" \
   -F "file=@samples/phishing_cases.json"
 ```
 
-### RAG 탐지 요청
-
-```bash
-curl -X POST "http://127.0.0.1:8000/detect/rag" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "검찰입니다. 계좌가 범죄에 연루되어 안전계좌로 이체해야 합니다.",
-    "top_k": 5
-  }'
-```
-
 ### 실시간 통화 발화 분석
 
 클라이언트는 통화가 시작되면 먼저 `start` 메시지를 보내고, 백엔드는 이 시점에 `call_logs`에 통화 기록을 바로 생성합니다. 이후 클라이언트는 3~4초 단위로 STT 처리된 통화 발화를 `message`로 전송합니다.
 
-백엔드는 전달받은 발화를 `call_messages`에 저장하고 누적 통화 내용을 분석합니다. 분석 결과는 `detection_results`에 저장되며, 고위험 보이스피싱으로 판단되면 `notification_logs`에 알림 이력을 자동 저장하고 위험도와 핵심근거를 클라이언트로 반환합니다.
+백엔드는 전달받은 발화를 `call_messages`에 저장하고 누적 통화 내용을 RAG 기반으로 분석합니다. 분석 결과는 `detection_results`에 저장되며, 고위험 보이스피싱으로 판단되면 `notification_logs`에 알림 이력을 자동 저장하고 위험도와 핵심근거를 클라이언트로 반환합니다.
 
 ```text
 ws://127.0.0.1:8000/ws/calls/analyze
