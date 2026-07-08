@@ -7,6 +7,11 @@ from typing import Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    load_dotenv = None
+
 from app.database import init_db
 from app.repository import (
     build_call_text,
@@ -29,6 +34,9 @@ from app.schemas import (
 )
 from app.services.rag_detector import RagPhishingDetector
 
+
+if load_dotenv:
+    load_dotenv()
 
 detector = RagPhishingDetector()
 

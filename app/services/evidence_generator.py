@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any, Optional
 
 from app.schemas import RetrievedCase
+
+
+logger = logging.getLogger(__name__)
 
 
 class EvidenceGenerator:
@@ -31,8 +35,9 @@ class EvidenceGenerator:
                     matched_patterns=matched_patterns,
                     retrieved_cases=retrieved_cases,
                 )
-            except Exception:
+            except Exception as exc:
                 # LLM 장애가 탐지 API 장애로 이어지지 않도록 템플릿 핵심근거로 대체한다.
+                logger.warning("OpenAI 근거 생성 실패. 템플릿 근거로 대체합니다: %s", exc)
                 return self._generate_template(text, risk_score, matched_patterns, retrieved_cases)
 
         return self._generate_template(text, risk_score, matched_patterns, retrieved_cases)
