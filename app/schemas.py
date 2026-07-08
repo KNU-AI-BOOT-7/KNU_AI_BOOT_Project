@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -31,7 +33,7 @@ class ImportResult(BaseModel):
 class CallLogCreate(BaseModel):
     """실시간 통화 분석을 시작할 때 생성하는 통화 로그."""
 
-    device_id: int | None = Field(None, description="기기 ID")
+    device_id: Optional[int] = Field(None, description="기기 ID")
     name: str = Field("", description="통화기록 이름")
 
 
@@ -39,7 +41,7 @@ class CallLog(BaseModel):
     """탐지 결과가 누적되는 통화 기록."""
 
     id: int
-    device_id: int | None
+    device_id: Optional[int]
     name: str
     status: str
     risk_score: float
@@ -55,7 +57,7 @@ class CallMessageCreate(BaseModel):
 
     role: str = Field("unknown", description="caller, receiver, speaker_a 등 발화자 구분")
     content: str = Field(..., min_length=1, description="발화 내용")
-    turn_index: int | None = Field(None, ge=1, description="대화 순서")
+    turn_index: Optional[int] = Field(None, ge=1, description="대화 순서")
 
 
 class CallMessage(BaseModel):

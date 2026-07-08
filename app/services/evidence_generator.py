@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, Optional
 
 from app.schemas import RetrievedCase
 
@@ -12,7 +12,7 @@ from app.schemas import RetrievedCase
 class EvidenceGenerator:
     """생성형 모델을 사용할 수 있으면 사용하고, 아니면 안전한 템플릿을 사용한다."""
 
-    def __init__(self, model_name: str | None = None) -> None:
+    def __init__(self, model_name: Optional[str] = None) -> None:
         self.model_name = model_name or os.getenv("LLM_MODEL", "gpt-4o-mini")
 
     def generate(

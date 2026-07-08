@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 
@@ -122,7 +123,7 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
     {"type": "message", "role": "caller", "content": "검찰입니다...", "turn_index": 1}
     """
     await websocket.accept()
-    log_id: int | None = None
+    log_id: Optional[int] = None
 
     try:
         while True:
