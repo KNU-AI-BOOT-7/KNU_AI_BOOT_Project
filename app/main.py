@@ -11,10 +11,8 @@ from app.database import init_db
 from app.repository import (
     build_call_text,
     create_call_log,
-    get_training_case,
     insert_call_message,
     insert_notification,
-    insert_training_case,
     insert_training_cases,
     list_call_logs,
     list_training_cases,
@@ -28,7 +26,6 @@ from app.schemas import (
     ImportResult,
     NotificationCreate,
     TrainingCase,
-    TrainingCaseCreate,
 )
 from app.services.rag_detector import RagPhishingDetector
 
@@ -61,13 +58,6 @@ def health() -> dict[str, str]:
 def get_calls(limit: int = 100) -> list[CallLog]:
     """최근 통화 로그를 반환한다."""
     return list_call_logs(limit=limit)
-
-
-@app.post("/training-cases", response_model=TrainingCase)
-def create_training_case(case: TrainingCaseCreate) -> TrainingCase:
-    """정상 또는 보이스피싱 학습 사례 1건을 DB에 저장"""
-    case_id = insert_training_case(case)
-    return get_training_case(case_id)
 
 
 @app.post("/training-cases/import-json", response_model=ImportResult)
