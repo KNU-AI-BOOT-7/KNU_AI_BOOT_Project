@@ -1,1 +1,1 @@
-"""Service layer for detection and evidence generation."""
+"""탐지와 근거 생성을 담당하는 서비스 계층."""

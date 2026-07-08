@@ -1,1 +1,1 @@
-"""Voice phishing detection API package."""
+"""보이스피싱 탐지 API 패키지."""

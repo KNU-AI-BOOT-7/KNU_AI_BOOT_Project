@@ -1,4 +1,4 @@
-"""Generate human-readable evidence for RAG detection results."""
+"""RAG 탐지 결과를 사람이 이해하기 쉬운 근거 문장으로 생성한다."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.schemas import RetrievedCase
 
 
 class EvidenceGenerator:
-    """Use a generative model when available, otherwise use a safe template."""
+    """생성형 모델을 사용할 수 있으면 사용하고, 아니면 안전한 템플릿을 사용한다."""
 
     def __init__(self, model_name: str | None = None) -> None:
         self.model_name = model_name or os.getenv("LLM_MODEL", "gpt-4o-mini")
@@ -22,7 +22,7 @@ class EvidenceGenerator:
         matched_patterns: list[str],
         retrieved_cases: list[RetrievedCase],
     ) -> str:
-        """Generate evidence text with an LLM or a local fallback template."""
+        """LLM 또는 로컬 대체 템플릿으로 핵심근거를 생성한다."""
         if os.getenv("OPENAI_API_KEY"):
             try:
                 return self._generate_with_openai(
@@ -32,7 +32,7 @@ class EvidenceGenerator:
                     retrieved_cases=retrieved_cases,
                 )
             except Exception:
-                # LLM 장애가 탐지 API 장애로 이어지지 않도록 템플릿 근거로 대체한다.
+                # LLM 장애가 탐지 API 장애로 이어지지 않도록 템플릿 핵심근거로 대체한다.
                 return self._generate_template(text, risk_score, matched_patterns, retrieved_cases)
 
         return self._generate_template(text, risk_score, matched_patterns, retrieved_cases)
@@ -44,7 +44,7 @@ class EvidenceGenerator:
         matched_patterns: list[str],
         retrieved_cases: list[RetrievedCase],
     ) -> str:
-        """Call the OpenAI SDK if it is installed and configured."""
+        """OpenAI SDK가 설치되고 설정되어 있으면 호출한다."""
         from openai import OpenAI
 
         context: dict[str, Any] = {
@@ -86,7 +86,7 @@ JSON:
         matched_patterns: list[str],
         retrieved_cases: list[RetrievedCase],
     ) -> str:
-        """Create evidence text without calling an external LLM."""
+        """외부 LLM을 호출하지 않고 핵심근거를 생성한다."""
         risk_percent = round(risk_score * 100, 1)
         phishing_cases = [case for case in retrieved_cases if case.label == 1]
 
@@ -103,8 +103,7 @@ JSON:
                 "DB의 보이스피싱 사례 중 가장 유사한 사례와의 유사도는 "
                 f"{round(best_case.similarity * 100, 1)}%입니다."
             )
-            if best_case.reason:
-                lines.append(f"해당 유사 사례의 라벨링 근거는 '{best_case.reason}'입니다.")
+            lines.append(f"유사 사례 출처는 '{best_case.source or 'unknown'}'입니다.")
         else:
             lines.append("상위 유사 사례에는 보이스피싱 라벨 사례가 많지 않습니다.")
 

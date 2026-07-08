@@ -1,4 +1,4 @@
-"""RAG-based voice phishing detection service."""
+"""RAG 기반 보이스피싱 탐지 서비스."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ import math
 import re
 from collections import Counter
 
-from app.repository import list_all_cases
+from app.repository import list_all_training_cases
 from app.schemas import RagDetectResponse, RetrievedCase
 from app.services.evidence_generator import EvidenceGenerator
 
 
 class RuleSignalDetector:
-    """Find explainable voice phishing risk signals in the input text."""
+    """입력 문장에서 설명 가능한 보이스피싱 위험 신호를 찾는다."""
 
     PATTERNS: dict[str, list[str]] = {
         "수사기관/공공기관 사칭": [
@@ -62,7 +62,7 @@ class RuleSignalDetector:
     }
 
     def find(self, text: str) -> list[str]:
-        """Return names of matched risk signal groups."""
+        """탐지된 위험 신호 그룹 이름을 반환한다."""
         matched: list[str] = []
         for pattern_name, regexes in self.PATTERNS.items():
             if any(re.search(regex, text, flags=re.IGNORECASE) for regex in regexes):
@@ -72,11 +72,11 @@ class RuleSignalDetector:
 
 class RagPhishingDetector:
     """
-    Detect phishing by retrieving similar cases from DB and generating evidence.
+    DB에서 유사 사례를 검색하고 근거를 생성해 보이스피싱을 탐지한다.
 
-    This implementation uses pure Python character n-gram similarity so the
-    project can run without a vector DB. The retrieval method can later be
-    replaced with FAISS, Chroma, or Elasticsearch without changing the API.
+    이 구현은 벡터 DB 없이도 실행할 수 있도록 순수 파이썬 문자 n-gram
+    유사도를 사용한다. 추후 API를 바꾸지 않고 FAISS, Chroma,
+    Elasticsearch 같은 검색 방식으로 교체할 수 있다.
     """
 
     def __init__(self) -> None:
@@ -84,7 +84,7 @@ class RagPhishingDetector:
         self.evidence_generator = EvidenceGenerator()
 
     def detect(self, text: str, top_k: int = 5) -> RagDetectResponse:
-        """Run RAG retrieval, score calculation, and evidence generation."""
+        """RAG 검색, 점수 계산, 근거 생성을 실행한다."""
         cleaned_text = self._clean_text(text)
         if not cleaned_text:
             raise ValueError("탐지할 텍스트가 비어 있습니다.")
@@ -105,13 +105,13 @@ class RagPhishingDetector:
             risk_level=risk_level,
             risk_score=round(risk_score, 4),
             matched_patterns=matched_patterns,
-            evidence=evidence,
+            core_evidence=evidence,
             retrieved_cases=retrieved_cases,
         )
 
     def _retrieve_similar_cases(self, query: str, top_k: int) -> list[RetrievedCase]:
-        """Search DB cases by character n-gram cosine similarity."""
-        cases = list_all_cases()
+        """문자 n-gram 코사인 유사도로 DB 사례를 검색한다."""
+        cases = list_all_training_cases()
         query_vector = self._char_ngram_counter(query)
         scored_cases: list[RetrievedCase] = []
 
@@ -121,9 +121,9 @@ class RagPhishingDetector:
             scored_cases.append(
                 RetrievedCase(
                     id=case.id,
+                    external_id=case.external_id,
                     text=case.text,
                     label=case.label,
-                    reason=case.reason,
                     source=case.source,
                     similarity=round(similarity, 4),
                 )
@@ -138,10 +138,10 @@ class RagPhishingDetector:
         matched_patterns: list[str],
     ) -> float:
         """
-        Calculate risk score from retrieved phishing cases and rule signals.
+        검색된 보이스피싱 사례와 규칙 신호로 위험 점수를 계산한다.
 
-        - RAG score 70%: highest similarity among retrieved phishing cases
-        - Rule score 30%: number of matched risk signal groups
+        - RAG 점수 70%: 검색된 보이스피싱 사례 중 가장 높은 유사도
+        - 규칙 점수 30%: 탐지된 위험 신호 그룹 개수
         """
         phishing_similarity = 0.0
         for case in retrieved_cases:
@@ -153,7 +153,7 @@ class RagPhishingDetector:
         return max(0.0, min(score, 1.0))
 
     def _char_ngram_counter(self, text: str, min_n: int = 2, max_n: int = 5) -> Counter[str]:
-        """Convert text to a character n-gram count vector."""
+        """텍스트를 문자 n-gram 카운트 벡터로 변환한다."""
         normalized = self._clean_text(text)
         padded = f" {normalized} "
         grams: Counter[str] = Counter()
@@ -165,7 +165,7 @@ class RagPhishingDetector:
         return grams
 
     def _cosine_similarity(self, left: Counter[str], right: Counter[str]) -> float:
-        """Calculate cosine similarity between two sparse Counter vectors."""
+        """두 희소 Counter 벡터의 코사인 유사도를 계산한다."""
         if not left or not right:
             return 0.0
 
@@ -180,7 +180,7 @@ class RagPhishingDetector:
         return dot_product / (left_norm * right_norm)
 
     def _risk_level(self, risk_score: float) -> str:
-        """Convert numeric risk score to a simple level."""
+        """숫자 위험 점수를 간단한 위험 등급으로 변환한다."""
         if risk_score >= 0.75:
             return "high"
         if risk_score >= 0.45:
@@ -188,5 +188,5 @@ class RagPhishingDetector:
         return "low"
 
     def _clean_text(self, text: str) -> str:
-        """Normalize repeated whitespace while preserving original Korean text."""
+        """원문 한국어는 유지하면서 반복 공백만 정규화한다."""
         return re.sub(r"\s+", " ", text).strip()

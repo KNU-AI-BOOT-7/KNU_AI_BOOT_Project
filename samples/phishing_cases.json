@@ -1,33 +1,33 @@
 {
   "cases": [
     {
+      "id": "phishing_sample_001",
       "text": "검찰입니다. 고객님 계좌가 범죄에 연루되어 안전계좌로 이체해야 합니다.",
       "label": 1,
-      "reason": "수사기관 사칭, 범죄 연루 압박, 안전계좌 이체 요구",
       "source": "sample"
     },
     {
+      "id": "phishing_sample_002",
       "text": "금융감독원입니다. 본인 명의 통장이 대포통장으로 사용되어 확인이 필요합니다.",
       "label": 1,
-      "reason": "공공기관 사칭 및 대포통장 언급",
       "source": "sample"
     },
     {
+      "id": "phishing_sample_003",
       "text": "저금리 대출 승인이 가능하니 앱을 설치하고 인증번호를 알려주세요.",
       "label": 1,
-      "reason": "대출 미끼, 앱 설치, 인증번호 요구",
       "source": "sample"
     },
     {
+      "id": "normal_sample_001",
       "text": "택배가 오늘 도착 예정입니다. 배송 시간을 확인해주세요.",
       "label": 0,
-      "reason": "일반 배송 안내",
       "source": "sample"
     },
     {
+      "id": "normal_sample_002",
       "text": "고객님 카드 결제 예정 금액 안내드립니다.",
       "label": 0,
-      "reason": "일반 금융 알림",
       "source": "sample"
     }
   ]
