@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -149,7 +150,11 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
                     turn_index=payload.get("turn_index"),
                 ),
             )
-            detection = _detect_and_persist(log_id=log_id, top_k=int(payload.get("top_k", 5)))
+            detection = await asyncio.to_thread(
+                _detect_and_persist,
+                log_id=log_id,
+                top_k=int(payload.get("top_k", 5)),
+            )
             response = _build_client_analysis_response(log_id, saved_message.model_dump(), detection)
             await websocket.send_json(response)
     except WebSocketDisconnect:
