@@ -147,11 +147,56 @@ curl "http://127.0.0.1:8000/calls/10"
 }
 ```
 
-## 6. 실시간 통화 분석
+## 6. 녹음 파일 분석
+
+```http
+POST /calls/analyze-audio
+```
+
+요청:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
+  -F "file=@call.wav"
+```
+
+응답:
+
+```json
+{
+  "type": "audio_analysis",
+  "log_id": 11,
+  "file_name": "call.wav",
+  "segments": [
+    {
+      "chunk_id": 1,
+      "start_time": 0.0,
+      "end_time": 3.2,
+      "speaker": "speaker_a",
+      "text": "서울중앙지검입니다."
+    }
+  ],
+  "is_phishing": true,
+  "risk_score": 0.91,
+  "risk_level": "high",
+  "phishing_type": "기관 사칭",
+  "matched_patterns": ["수사기관/공공기관 사칭"],
+  "core_evidence": "수사기관 사칭 표현이 탐지되었습니다.",
+  "notification": null
+}
+```
+
+현재 오디오 분석은 전사 모듈(`mp3_json`)이 준비된 환경에서 동작합니다.
+
+## 7. 실시간 통화 분석
 
 ```text
 WS /ws/calls/analyze
 ```
+
+위험도 점수는 KoELECTRA 모델이 준비되어 있으면 KoELECTRA가 계산하고,
+RAG와 규칙 패턴은 주요 키워드와 근거 생성을 보조합니다.
+KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
 
 통화 시작 요청:
 
