@@ -65,6 +65,7 @@ class CallLog(BaseModel):
     risk_score: float
     risk_level: str
     detected_label: int
+    phishing_type: str
     core_evidence: str
     created_at: str
     updated_at: str

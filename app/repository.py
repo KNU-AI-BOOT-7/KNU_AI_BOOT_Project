@@ -279,7 +279,7 @@ def get_call_log(log_id: int) -> CallLog:
         row = connection.execute(
             """
             SELECT id, device_id, name, status, risk_score, risk_level,
-                   detected_label, core_evidence, created_at, updated_at
+                   detected_label, phishing_type, core_evidence, created_at, updated_at
             FROM call_logs
             WHERE id = ?
             """,
@@ -298,7 +298,7 @@ def list_call_logs(limit: int = 100) -> list[CallLog]:
         rows = connection.execute(
             """
             SELECT id, device_id, name, status, risk_score, risk_level,
-                   detected_label, core_evidence, created_at, updated_at
+                   detected_label, phishing_type, core_evidence, created_at, updated_at
             FROM call_logs
             ORDER BY id DESC
             LIMIT ?
@@ -388,6 +388,7 @@ def save_detection_result(
 ) -> DetectionResult:
     """탐지 결과를 저장하고 통화 로그의 최신 상태를 갱신한다."""
     status = "phishing" if detected_label == 1 else "normal"
+    phishing_type = _infer_phishing_type(matched_patterns, detected_label)
     with get_connection() as connection:
         cursor = connection.execute(
             """
@@ -416,11 +417,20 @@ def save_detection_result(
                 risk_score = ?,
                 risk_level = ?,
                 detected_label = ?,
+                phishing_type = ?,
                 core_evidence = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (status, risk_score, risk_level, detected_label, core_evidence, log_id),
+            (
+                status,
+                risk_score,
+                risk_level,
+                detected_label,
+                phishing_type,
+                core_evidence,
+                log_id,
+            ),
         )
 
     return get_detection_result(result_id)
@@ -446,6 +456,26 @@ def get_detection_result(result_id: int) -> DetectionResult:
     data["matched_patterns"] = json.loads(data["matched_patterns"] or "[]")
     data["retrieved_case_ids"] = json.loads(data["retrieved_case_ids"] or "[]")
     return DetectionResult(**data)
+
+
+def _infer_phishing_type(matched_patterns: list[str], detected_label: int) -> str:
+    """탐지 패턴 목록에서 클라이언트에 보여줄 대표 피싱 유형을 고른다."""
+    if detected_label != 1:
+        return ""
+
+    type_priority = [
+        ("수사기관/공공기관 사칭", "기관 사칭"),
+        ("범죄 연루 압박", "수사기관 사칭"),
+        ("금전 이체 유도", "금전 이체 유도"),
+        ("개인정보/인증 요구", "개인정보/인증 요구"),
+        ("앱 설치/원격제어 유도", "앱 설치/원격제어 유도"),
+        ("긴급성/비밀 유지 압박", "긴급성/비밀 유지 압박"),
+    ]
+    for pattern, phishing_type in type_priority:
+        if pattern in matched_patterns:
+            return phishing_type
+
+    return "보이스피싱 의심"
 
 
 def insert_notification(log_id: int, notification: NotificationCreate) -> NotificationLog:

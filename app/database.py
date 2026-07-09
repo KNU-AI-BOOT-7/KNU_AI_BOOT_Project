@@ -69,12 +69,14 @@ def init_db() -> None:
                 risk_score REAL NOT NULL DEFAULT 0,
                 risk_level TEXT NOT NULL DEFAULT 'low',
                 detected_label INTEGER NOT NULL DEFAULT 0 CHECK (detected_label IN (0, 1)),
+                phishing_type TEXT DEFAULT '',
                 core_evidence TEXT DEFAULT '',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        _ensure_column(connection, "call_logs", "phishing_type", "TEXT DEFAULT ''")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS call_messages (
@@ -130,3 +132,20 @@ def init_db() -> None:
             )
             """
         )
+
+
+def _ensure_column(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    column_definition: str,
+) -> None:
+    """기존 SQLite DB에 새 컬럼이 없으면 안전하게 추가한다."""
+    columns = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    existing_column_names = {column["name"] for column in columns}
+    if column_name in existing_column_names:
+        return
+
+    connection.execute(
+        f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+    )

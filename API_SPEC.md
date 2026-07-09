@@ -75,6 +75,48 @@ GET /training-cases
 GET /calls
 ```
 
+요청:
+
+```bash
+curl "http://127.0.0.1:8000/calls?limit=20"
+```
+
+응답:
+
+```json
+[
+  {
+    "id": 10,
+    "device_id": 1,
+    "name": "검찰 사칭 테스트",
+    "status": "phishing",
+    "risk_score": 0.84,
+    "risk_level": "high",
+    "detected_label": 1,
+    "phishing_type": "기관 사칭",
+    "core_evidence": "검찰 사칭 표현과 계좌 범죄 연루 표현이 탐지되었습니다.",
+    "created_at": "2026-07-09 10:20:31",
+    "updated_at": "2026-07-09 10:21:03"
+  }
+]
+```
+
+응답 필드:
+
+| 필드 | 설명 |
+| --- | --- |
+| `id` | 통화 로그 ID |
+| `device_id` | 클라이언트 기기 ID |
+| `name` | 통화 기록 이름 |
+| `status` | `normal` 또는 `phishing` |
+| `risk_score` | 0~1 사이 위험도 수치 |
+| `risk_level` | `low`, `medium`, `high` |
+| `detected_label` | 정상 `0`, 보이스피싱 `1` |
+| `phishing_type` | 대표 피싱 유형. 정상 통화면 빈 문자열 |
+| `core_evidence` | 최신 분석의 핵심 근거와 상세내역 |
+| `created_at` | 통화 로그 생성 날짜 |
+| `updated_at` | 최신 분석 반영 날짜 |
+
 ## 5. 실시간 통화 분석
 
 ```text
@@ -99,7 +141,15 @@ WS /ws/calls/analyze
   "call": {
     "id": 1,
     "device_id": 1,
-    "name": "테스트 통화"
+    "name": "테스트 통화",
+    "status": "normal",
+    "risk_score": 0.0,
+    "risk_level": "low",
+    "detected_label": 0,
+    "phishing_type": "",
+    "core_evidence": "",
+    "created_at": "2026-07-09 10:20:31",
+    "updated_at": "2026-07-09 10:20:31"
   }
 }
 ```
