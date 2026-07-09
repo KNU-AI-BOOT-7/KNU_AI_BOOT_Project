@@ -35,6 +35,10 @@ def risk_level_of(score: float) -> str:
 class KoElectraScorer:
     """models/koelectra 를 1회 로드해 통화 발화 목록의 피싱 확률을 계산한다."""
 
+    def is_ready(self) -> bool:
+        """학습된 KoELECTRA 모델 폴더가 있으면 True를 반환한다."""
+        return MODEL_DIR.exists()
+
     def preload(self) -> None:
         """서버 시작 시 모델을 미리 로드해 첫 요청 지연을 없앤다."""
         self._ensure_model_ready()
@@ -68,5 +72,5 @@ class KoElectraScorer:
 
     def _ensure_model_ready(self) -> None:
         """KoELECTRA 모델 파일이 없으면 추론 대신 RAG fallback을 사용하도록 알린다."""
-        if not MODEL_DIR.exists():
+        if not self.is_ready():
             raise RuntimeError(f"{MODEL_DIR} 모델 폴더가 없습니다.")

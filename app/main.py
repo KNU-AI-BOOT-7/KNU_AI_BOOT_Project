@@ -57,6 +57,12 @@ scorer = KoElectraScorer()
 async def lifespan(app: FastAPI):
     """API 서버가 시작될 때 SQLite DB를 초기화하고 KoELECTRA 모델을 미리 로드"""
     init_db()
+    if not scorer.is_ready():
+        # 학습 모델이 없는 개발 환경에서는 KoELECTRA import를 건너뛰고 RAG 기반 분석만 사용한다.
+        logger.info("KoELECTRA 모델 폴더가 없어 RAG 점수로 대체합니다.")
+        yield
+        return
+
     try:
         await asyncio.to_thread(scorer.preload)
     except Exception as exc:
@@ -342,6 +348,9 @@ def _detect_and_persist(log_id: int, top_k: int = 5) -> dict:
 
 def _score_with_koelectra(log_id: int) -> Optional[float]:
     """KoELECTRA 모델이 준비되어 있으면 위험도 점수를 계산하고, 실패 시 None을 반환한다."""
+    if not scorer.is_ready():
+        return None
+
     try:
         return scorer.score(list_call_messages(log_id))
     except Exception as exc:
