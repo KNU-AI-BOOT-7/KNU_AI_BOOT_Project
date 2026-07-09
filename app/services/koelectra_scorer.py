@@ -13,7 +13,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 WINDOW = 10  # 최근 N턴 sliding window (256토큰 절단으로 긴 통화 후반을 놓치는 것 방지)
+MODEL_DIR = Path(__file__).resolve().parents[2] / "models" / "koelectra"
 
 # 기능명세서 경고 기준: 0.70 이상 "주의", 0.85 이상 "강한 경고"
 TH_WARNING = 0.70
@@ -34,6 +37,7 @@ class KoElectraScorer:
 
     def preload(self) -> None:
         """서버 시작 시 모델을 미리 로드해 첫 요청 지연을 없앤다."""
+        self._ensure_model_ready()
         from predict_transformer import predict_proba
 
         predict_proba(["[A] 로드 확인"])
@@ -46,6 +50,7 @@ class KoElectraScorer:
         if not messages:
             return 0.0
 
+        self._ensure_model_ready()
         from predict_transformer import predict_proba
 
         speaker_map: dict[str, str] = {}
@@ -60,3 +65,8 @@ class KoElectraScorer:
         window = " ".join(tagged[-WINDOW:])
         probs = predict_proba([cumulative, window])
         return float(max(probs))
+
+    def _ensure_model_ready(self) -> None:
+        """KoELECTRA 모델 파일이 없으면 추론 대신 RAG fallback을 사용하도록 알린다."""
+        if not MODEL_DIR.exists():
+            raise RuntimeError(f"{MODEL_DIR} 모델 폴더가 없습니다.")
