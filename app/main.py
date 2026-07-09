@@ -40,7 +40,7 @@ from app.schemas import (
     NotificationCreate,
     TrainingCase,
 )
-from app.services.koelectra_scorer import TH_WARNING, KoElectraScorer, risk_level_of
+from app.services.koelectra_scorer import MODEL_DIR, TH_WARNING, KoElectraScorer, risk_level_of
 from app.services.rag_detector import RagPhishingDetector
 
 
@@ -51,6 +51,7 @@ if load_dotenv:
 
 detector = RagPhishingDetector()
 scorer = KoElectraScorer()
+_koelectra_missing_logged = False
 
 
 @asynccontextmanager
@@ -58,8 +59,8 @@ async def lifespan(app: FastAPI):
     """API 서버가 시작될 때 SQLite DB를 초기화하고 KoELECTRA 모델을 미리 로드"""
     init_db()
     if not scorer.is_ready():
-        # 학습 모델이 없는 개발 환경에서는 KoELECTRA import를 건너뛰고 RAG 기반 분석만 사용한다.
-        logger.info("KoELECTRA 모델 폴더가 없어 RAG 점수로 대체합니다.")
+        # 학습 모델이 없으면 원인을 바로 알 수 있도록 warning 로그를 남기고 RAG로 대체한다.
+        _log_koelectra_missing()
         yield
         return
 
@@ -349,6 +350,7 @@ def _detect_and_persist(log_id: int, top_k: int = 5) -> dict:
 def _score_with_koelectra(log_id: int) -> Optional[float]:
     """KoELECTRA 모델이 준비되어 있으면 위험도 점수를 계산하고, 실패 시 None을 반환한다."""
     if not scorer.is_ready():
+        _log_koelectra_missing()
         return None
 
     try:
@@ -398,3 +400,18 @@ def _compact_notification(notification: dict) -> dict:
         "status": notification["status"],
         "created_at": notification["created_at"],
     }
+
+
+def _log_koelectra_missing() -> None:
+    """KoELECTRA 모델 미설정 상태를 서버 로그에 한 번만 명확히 남긴다."""
+    global _koelectra_missing_logged
+    if _koelectra_missing_logged:
+        return
+
+    _koelectra_missing_logged = True
+    logger.warning(
+        "KoELECTRA 모델 폴더가 없어 KoELECTRA 위험도 계산을 사용하지 않습니다. "
+        "현재 요청은 RAG/규칙 기반 점수로 대체됩니다. "
+        "학습 후 모델을 생성하세요. model_dir=%s",
+        MODEL_DIR,
+    )
