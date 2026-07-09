@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -102,6 +104,76 @@ async def import_training_cases_json(file: UploadFile = File(...)) -> ImportResu
 def get_training_cases(limit: int = 100) -> list[TrainingCase]:
     """최근 저장된 학습 사례를 반환한다."""
     return list_training_cases(limit=limit)
+
+
+@app.post("/calls/analyze-audio")
+async def analyze_call_audio(
+    file: UploadFile = File(...),
+    device_id: Optional[int] = None,
+    top_k: int = 5,
+) -> dict:
+    """
+    통화 녹음 파일(mp3/wav)을 업로드받아 전사 후 보이스피싱 여부를 판정한다.
+
+    처리 흐름 (실시간 WS 분석과 동일한 저장·분석 구조를 배치로 재사용):
+    1. whisper + 화자 구분으로 발화 segment JSON 생성 (mp3_json.transcribe_with_speakers)
+    2. 통화 로그를 만들고 segment를 통화 발화로 저장
+    3. _detect_and_persist로 누적 통화 내용을 분석해 위험도·핵심근거 반환
+    """
+    suffix = os.path.splitext(file.filename or "")[1].lower()
+    if suffix not in (".mp3", ".wav"):
+        raise HTTPException(status_code=400, detail="mp3 또는 wav 파일만 업로드할 수 있습니다.")
+
+    raw_bytes = await file.read()
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    try:
+        tmp.write(raw_bytes)
+        tmp.close()
+        segments = await asyncio.to_thread(_transcribe_audio, tmp.name)
+    finally:
+        os.unlink(tmp.name)
+
+    if not segments:
+        raise HTTPException(status_code=422, detail="오디오에서 발화를 전사하지 못했습니다.")
+
+    call = create_call_log(CallLogCreate(device_id=device_id, name=file.filename or "업로드 통화"))
+    for turn_index, seg in enumerate(segments, 1):
+        insert_call_message(
+            log_id=call.id,
+            message=CallMessageCreate(role=seg["speaker"], content=seg["text"], turn_index=turn_index),
+        )
+
+    detection = await asyncio.to_thread(_detect_and_persist, log_id=call.id, top_k=top_k)
+
+    return {
+        "type": "audio_analysis",
+        "log_id": call.id,
+        "file_name": file.filename,
+        "segments": [
+            {
+                "chunk_id": i + 1,
+                "start_time": seg["start"],
+                "end_time": seg["end"],
+                "speaker": seg["speaker"],
+                "text": seg["text"],
+            }
+            for i, seg in enumerate(segments)
+        ],
+        "is_phishing": detection["is_phishing"],
+        "risk_score": detection["risk_score"],
+        "risk_level": detection["risk_level"],
+        "phishing_type": detection["phishing_type"],
+        "matched_patterns": detection["matched_patterns"],
+        "core_evidence": detection["core_evidence"],
+        "notification": detection["notification"],
+    }
+
+
+def _transcribe_audio(audio_path: str) -> list[dict]:
+    """whisper + 화자 구분으로 오디오를 발화 segment 목록으로 전사한다."""
+    from mp3_json import transcribe_with_speakers  # 무거운 모델 의존성이라 지연 import
+
+    return transcribe_with_speakers(audio_path)
 
 
 @app.websocket("/ws/calls/analyze")
