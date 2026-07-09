@@ -99,7 +99,11 @@ class RagPhishingDetector:
 
         retrieved_cases = self._retrieve_similar_cases(cleaned_text, top_k)
         matched_patterns = self.rule_detector.find(cleaned_text)
-        risk_score = self._calculate_risk_score(retrieved_cases, matched_patterns)
+        risk_score = self._calculate_risk_score(
+            text=cleaned_text,
+            retrieved_cases=retrieved_cases,
+            matched_patterns=matched_patterns,
+        )
         risk_level = self._risk_level(risk_score)
         evidence = self.evidence_generator.generate(
             text=cleaned_text,
@@ -142,14 +146,17 @@ class RagPhishingDetector:
 
     def _calculate_risk_score(
         self,
+        text: str,
         retrieved_cases: list[RetrievedCase],
         matched_patterns: list[str],
     ) -> float:
         """
         검색된 보이스피싱 사례와 규칙 신호로 위험 점수를 계산한다.
 
-        - RAG 점수 70%: 검색된 보이스피싱 사례 중 가장 높은 유사도
-        - 규칙 점수 30%: 탐지된 위험 신호 그룹 개수
+        - RAG 점수 50%: 검색된 보이스피싱 사례 중 가장 높은 유사도
+        - 규칙 점수 50%: 탐지된 위험 신호 그룹 개수
+        - 강한 피싱 조합은 RAG 유사도가 낮아도 최소 위험도를 보정
+        - 공식 채널 안내 같은 정상 상담 신호는 강한 조합이 없을 때만 감점
         """
         phishing_similarity = 0.0
         for case in retrieved_cases:
@@ -157,8 +164,58 @@ class RagPhishingDetector:
                 phishing_similarity = max(phishing_similarity, case.similarity)
 
         rule_score = min(len(matched_patterns) / 5, 1.0)
-        score = (phishing_similarity * 0.7) + (rule_score * 0.3)
+        score = (phishing_similarity * 0.5) + (rule_score * 0.5)
+        strong_combo_floor = self._strong_phishing_combo_floor(matched_patterns)
+
+        if strong_combo_floor > 0:
+            score = max(score, strong_combo_floor)
+        else:
+            score -= self._normal_consulting_discount(text)
+
         return max(0.0, min(score, 1.0))
+
+    def _strong_phishing_combo_floor(self, matched_patterns: list[str]) -> float:
+        """핵심 위험 신호 조합이면 RAG 유사도와 무관하게 최소 점수를 부여한다."""
+        matched = set(matched_patterns)
+        has_combo = False
+
+        if "수사기관/공공기관 사칭" in matched and (
+            "범죄 연루 압박" in matched or "금전 이체 유도" in matched
+        ):
+            has_combo = True
+
+        if "대출 사칭/상환금 요구" in matched and "금전 이체 유도" in matched:
+            has_combo = True
+
+        if "개인정보/인증 요구" in matched and "앱 설치/원격제어 유도" in matched:
+            has_combo = True
+
+        if "금전 이체 유도" in matched and "긴급성/비밀 유지 압박" in matched:
+            has_combo = True
+
+        if not has_combo:
+            return 0.0
+
+        if len(matched) >= 3:
+            return 0.82
+        return 0.72
+
+    def _normal_consulting_discount(self, text: str) -> float:
+        """정상 금융 상담에서 자주 나오는 안전 신호가 있으면 위험도를 낮춘다."""
+        safe_patterns = [
+            r"공식\s*앱",
+            r"지점.*방문",
+            r"천천히.*검토",
+            r"오늘.*결정.*안",
+            r"상담.*신청",
+            r"서류.*심사",
+            r"부담.*갖지",
+            r"다시.*연락",
+        ]
+        safe_count = sum(
+            1 for pattern in safe_patterns if re.search(pattern, text, flags=re.IGNORECASE)
+        )
+        return min(safe_count * 0.04, 0.18)
 
     def _char_ngram_counter(self, text: str, min_n: int = 2, max_n: int = 5) -> Counter[str]:
         """텍스트를 문자 n-gram 카운트 벡터로 변환한다."""
