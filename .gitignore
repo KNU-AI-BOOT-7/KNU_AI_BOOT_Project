@@ -4,3 +4,7 @@ __pycache__/
 data/
 .env
 samples/
+models/
+.DS_Store
+.idea/
+tests/
