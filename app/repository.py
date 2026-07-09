@@ -7,6 +7,9 @@ from typing import Any
 
 from app.database import get_connection
 from app.schemas import (
+    CallLogDetail,
+    CallLogListItem,
+    CallLogListResponse,
     CallLog,
     CallLogCreate,
     CallMessage,
@@ -14,6 +17,7 @@ from app.schemas import (
     DetectionResult,
     NotificationCreate,
     NotificationLog,
+    RiskLevelCounts,
     TrainingCase,
     TrainingCaseCreate,
     TrainingCaseTurn,
@@ -263,10 +267,10 @@ def create_call_log(call: CallLogCreate) -> CallLog:
     with get_connection() as connection:
         cursor = connection.execute(
             """
-            INSERT INTO call_logs(device_id, name)
-            VALUES (?, ?)
+            INSERT INTO call_logs(device_id, name, file_type)
+            VALUES (?, ?, ?)
             """,
-            (call.device_id, call.name.strip()),
+            (call.device_id, call.name.strip(), call.file_type.strip() or "realtime"),
         )
         log_id = int(cursor.lastrowid)
 
@@ -278,7 +282,7 @@ def get_call_log(log_id: int) -> CallLog:
     with get_connection() as connection:
         row = connection.execute(
             """
-            SELECT id, device_id, name, status, risk_score, risk_level,
+            SELECT id, device_id, name, file_type, status, risk_score, risk_level,
                    detected_label, phishing_type, core_evidence, created_at, updated_at
             FROM call_logs
             WHERE id = ?
@@ -297,7 +301,7 @@ def list_call_logs(limit: int = 100) -> list[CallLog]:
     with get_connection() as connection:
         rows = connection.execute(
             """
-            SELECT id, device_id, name, status, risk_score, risk_level,
+            SELECT id, device_id, name, file_type, status, risk_score, risk_level,
                    detected_label, phishing_type, core_evidence, created_at, updated_at
             FROM call_logs
             ORDER BY id DESC
@@ -307,6 +311,89 @@ def list_call_logs(limit: int = 100) -> list[CallLog]:
         ).fetchall()
 
     return [CallLog(**dict(row)) for row in rows]
+
+
+def get_call_log_list_response(limit: int = 100) -> CallLogListResponse:
+    """통화 기록 목록 화면에 필요한 요약 정보와 리스크 카운트를 조회한다."""
+    with get_connection() as connection:
+        count_rows = connection.execute(
+            """
+            SELECT risk_level, COUNT(*) AS count
+            FROM call_logs
+            GROUP BY risk_level
+            """
+        ).fetchall()
+        rows = connection.execute(
+            """
+            SELECT id, created_at, risk_score, risk_level, detected_label,
+                   status, phishing_type, file_type
+            FROM call_logs
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+    counts = {"low": 0, "medium": 0, "high": 0}
+    for row in count_rows:
+        risk_level = str(row["risk_level"])
+        if risk_level in counts:
+            counts[risk_level] = int(row["count"])
+
+    calls = [
+        CallLogListItem(
+            id=int(row["id"]),
+            called_at=str(row["created_at"]),
+            risk_score=float(row["risk_score"]),
+            risk_level=str(row["risk_level"]),
+            phishing_type=_display_phishing_type(dict(row)),
+            file_type=str(row["file_type"] or "realtime"),
+        )
+        for row in rows
+    ]
+    return CallLogListResponse(
+        risk_level_counts=RiskLevelCounts(**counts),
+        calls=calls,
+    )
+
+
+def get_call_log_detail_response(log_id: int) -> CallLogDetail:
+    """통화 기록 상세 화면에 필요한 피싱 유형, 키워드, 근거를 조회한다."""
+    with get_connection() as connection:
+        call_row = connection.execute(
+            """
+            SELECT id, status, detected_label, phishing_type, core_evidence
+            FROM call_logs
+            WHERE id = ?
+            """,
+            (log_id,),
+        ).fetchone()
+        result_row = connection.execute(
+            """
+            SELECT matched_patterns, core_evidence
+            FROM detection_results
+            WHERE log_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (log_id,),
+        ).fetchone()
+
+    if call_row is None:
+        raise ValueError(f"log_id={log_id} 통화 로그를 찾을 수 없습니다.")
+
+    matched_patterns: list[str] = []
+    core_evidence = str(call_row["core_evidence"] or "")
+    if result_row is not None:
+        matched_patterns = json.loads(result_row["matched_patterns"] or "[]")
+        core_evidence = str(result_row["core_evidence"] or core_evidence)
+
+    return CallLogDetail(
+        id=int(call_row["id"]),
+        phishing_type=_display_phishing_type(dict(call_row)),
+        matched_patterns=matched_patterns,
+        core_evidence=core_evidence,
+    )
 
 
 def insert_call_message(log_id: int, message: CallMessageCreate) -> CallMessage:
@@ -477,6 +564,15 @@ def _infer_phishing_type(matched_patterns: list[str], detected_label: int) -> st
             return phishing_type
 
     return "보이스피싱 의심"
+
+
+def _display_phishing_type(row: dict) -> str:
+    """클라이언트 표시용 피싱 유형을 반환한다."""
+    if int(row.get("detected_label") or 0) == 0 or row.get("status") == "normal":
+        return "정상"
+
+    phishing_type = str(row.get("phishing_type") or "").strip()
+    return phishing_type or "보이스피싱 의심"
 
 
 def insert_notification(log_id: int, notification: NotificationCreate) -> NotificationLog:

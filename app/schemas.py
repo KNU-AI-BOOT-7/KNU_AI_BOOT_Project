@@ -53,6 +53,7 @@ class CallLogCreate(BaseModel):
 
     device_id: Optional[int] = Field(None, description="기기 ID")
     name: str = Field("", description="통화기록 이름")
+    file_type: str = Field("realtime", description="realtime 또는 recording")
 
 
 class CallLog(BaseModel):
@@ -61,6 +62,7 @@ class CallLog(BaseModel):
     id: int
     device_id: Optional[int]
     name: str
+    file_type: str
     status: str
     risk_score: float
     risk_level: str
@@ -69,6 +71,41 @@ class CallLog(BaseModel):
     core_evidence: str
     created_at: str
     updated_at: str
+
+
+class RiskLevelCounts(BaseModel):
+    """통화 기록 목록에서 리스크 레벨별 개수를 표현한다."""
+
+    low: int = 0
+    medium: int = 0
+    high: int = 0
+
+
+class CallLogListItem(BaseModel):
+    """통화 기록 목록 화면에 필요한 단일 항목."""
+
+    id: int
+    called_at: str
+    risk_score: float
+    risk_level: str
+    phishing_type: str
+    file_type: str
+
+
+class CallLogListResponse(BaseModel):
+    """통화 기록 목록 조회 응답."""
+
+    risk_level_counts: RiskLevelCounts
+    calls: list[CallLogListItem]
+
+
+class CallLogDetail(BaseModel):
+    """통화 기록 상세 화면에 필요한 탐지 정보."""
+
+    id: int
+    phishing_type: str
+    matched_patterns: list[str]
+    core_evidence: str
 
 
 class CallMessageCreate(BaseModel):

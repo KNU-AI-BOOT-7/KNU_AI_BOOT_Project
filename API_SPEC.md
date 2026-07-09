@@ -69,7 +69,7 @@ JSON 형식:
 GET /training-cases
 ```
 
-## 4. 통화 로그 조회
+## 4. 통화 기록 목록 조회
 
 ```http
 GET /calls
@@ -84,40 +84,70 @@ curl "http://127.0.0.1:8000/calls?limit=20"
 응답:
 
 ```json
-[
-  {
-    "id": 10,
-    "device_id": 1,
-    "name": "검찰 사칭 테스트",
-    "status": "phishing",
-    "risk_score": 0.84,
-    "risk_level": "high",
-    "detected_label": 1,
-    "phishing_type": "기관 사칭",
-    "core_evidence": "검찰 사칭 표현과 계좌 범죄 연루 표현이 탐지되었습니다.",
-    "created_at": "2026-07-09 10:20:31",
-    "updated_at": "2026-07-09 10:21:03"
-  }
-]
+{
+  "risk_level_counts": {
+    "low": 7,
+    "medium": 3,
+    "high": 2
+  },
+  "calls": [
+    {
+      "id": 10,
+      "called_at": "2026-07-09 10:20:31",
+      "risk_score": 0.84,
+      "risk_level": "high",
+      "phishing_type": "기관 사칭",
+      "file_type": "realtime"
+    },
+    {
+      "id": 9,
+      "called_at": "2026-07-09 09:18:02",
+      "risk_score": 0.12,
+      "risk_level": "low",
+      "phishing_type": "정상",
+      "file_type": "recording"
+    }
+  ]
+}
 ```
 
 응답 필드:
 
 | 필드 | 설명 |
 | --- | --- |
+| `risk_level_counts` | 전체 통화 기록의 리스크 레벨별 개수 |
+| `calls` | 통화 기록 목록 |
 | `id` | 통화 로그 ID |
-| `device_id` | 클라이언트 기기 ID |
-| `name` | 통화 기록 이름 |
-| `status` | `normal` 또는 `phishing` |
+| `called_at` | 통화 기록 생성 일시 |
 | `risk_score` | 0~1 사이 위험도 수치 |
 | `risk_level` | `low`, `medium`, `high` |
-| `detected_label` | 정상 `0`, 보이스피싱 `1` |
-| `phishing_type` | 대표 피싱 유형. 정상 통화면 빈 문자열 |
-| `core_evidence` | 최신 분석의 핵심 근거와 상세내역 |
-| `created_at` | 통화 로그 생성 날짜 |
-| `updated_at` | 최신 분석 반영 날짜 |
+| `phishing_type` | 대표 피싱 유형. 정상 통화면 `정상` |
+| `file_type` | `realtime` 또는 `recording` |
 
-## 5. 실시간 통화 분석
+## 5. 통화 기록 상세 조회
+
+```http
+GET /calls/{log_id}
+```
+
+요청:
+
+```bash
+curl "http://127.0.0.1:8000/calls/10"
+```
+
+응답:
+
+```json
+{
+  "id": 10,
+  "phishing_type": "기관 사칭",
+  "matched_patterns": ["수사기관/공공기관 사칭", "범죄 연루 압박"],
+  "core_evidence": "검찰 사칭 표현과 계좌 범죄 연루 표현이 탐지되었습니다."
+}
+```
+
+## 6. 실시간 통화 분석
 
 ```text
 WS /ws/calls/analyze
@@ -129,7 +159,8 @@ WS /ws/calls/analyze
 {
   "type": "start",
   "device_id": 1,
-  "name": "테스트 통화"
+  "name": "테스트 통화",
+  "file_type": "realtime"
 }
 ```
 
@@ -142,6 +173,7 @@ WS /ws/calls/analyze
     "id": 1,
     "device_id": 1,
     "name": "테스트 통화",
+    "file_type": "realtime",
     "status": "normal",
     "risk_score": 0.0,
     "risk_level": "low",

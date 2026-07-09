@@ -65,6 +65,7 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_id INTEGER,
                 name TEXT DEFAULT '',
+                file_type TEXT NOT NULL DEFAULT 'realtime',
                 status TEXT NOT NULL DEFAULT 'normal',
                 risk_score REAL NOT NULL DEFAULT 0,
                 risk_level TEXT NOT NULL DEFAULT 'low',
@@ -76,6 +77,7 @@ def init_db() -> None:
             )
             """
         )
+        _ensure_column(connection, "call_logs", "file_type", "TEXT NOT NULL DEFAULT 'realtime'")
         _ensure_column(connection, "call_logs", "phishing_type", "TEXT DEFAULT ''")
         connection.execute(
             """
