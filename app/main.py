@@ -89,6 +89,8 @@ async def import_training_cases_json(file: UploadFile = File(...)) -> ImportResu
         raise HTTPException(status_code=400, detail="JSON 파일을 읽을 수 없습니다.") from exc
 
     inserted_count = insert_training_cases(cases)
+    if inserted_count > 0:
+        detector.clear_index()
     return ImportResult(inserted_count=inserted_count, skipped_count=skipped_count)
 
 

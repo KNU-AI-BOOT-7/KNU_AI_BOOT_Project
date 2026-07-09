@@ -5,10 +5,22 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
+from dataclasses import dataclass
+from threading import Lock
+from typing import Optional
 
 from app.repository import list_all_training_cases
 from app.schemas import RagDetectResponse, RetrievedCase
 from app.services.evidence_generator import EvidenceGenerator
+
+
+@dataclass(frozen=True)
+class IndexedTrainingCase:
+    """RAG 검색 속도를 높이기 위해 미리 계산해 둔 학습 사례 벡터."""
+
+    case: RetrievedCase
+    vector: Counter[str]
+    vector_norm: float
 
 
 class RuleSignalDetector:
@@ -90,6 +102,13 @@ class RagPhishingDetector:
     def __init__(self) -> None:
         self.rule_detector = RuleSignalDetector()
         self.evidence_generator = EvidenceGenerator()
+        self._indexed_cases: Optional[list[IndexedTrainingCase]] = None
+        self._index_lock = Lock()
+
+    def clear_index(self) -> None:
+        """학습 데이터가 바뀌었을 때 다음 검색에서 RAG 인덱스를 다시 만들도록 비운다."""
+        with self._index_lock:
+            self._indexed_cases = None
 
     def detect(self, text: str, top_k: int = 5) -> RagDetectResponse:
         """RAG 검색, 점수 계산, 근거 생성을 실행한다."""
@@ -97,8 +116,13 @@ class RagPhishingDetector:
         if not cleaned_text:
             raise ValueError("탐지할 텍스트가 비어 있습니다.")
 
-        retrieved_cases = self._retrieve_similar_cases(cleaned_text, top_k)
         matched_patterns = self.rule_detector.find(cleaned_text)
+        # 강한 피싱 조합은 규칙만으로도 충분히 위험하므로 RAG 검색을 생략해 응답 시간을 줄인다.
+        if self._should_skip_rag_for_strong_signal(matched_patterns):
+            retrieved_cases: list[RetrievedCase] = []
+        else:
+            retrieved_cases = self._retrieve_similar_cases(cleaned_text, top_k)
+
         risk_score = self._calculate_risk_score(
             text=cleaned_text,
             retrieved_cases=retrieved_cases,
@@ -122,14 +146,19 @@ class RagPhishingDetector:
         )
 
     def _retrieve_similar_cases(self, query: str, top_k: int) -> list[RetrievedCase]:
-        """문자 n-gram 코사인 유사도로 DB 사례를 검색한다."""
-        cases = list_all_training_cases()
+        """캐시된 문자 n-gram 벡터로 DB 유사 사례를 검색한다."""
         query_vector = self._char_ngram_counter(query)
+        query_norm = self._counter_norm(query_vector)
         scored_cases: list[RetrievedCase] = []
 
-        for case in cases:
-            case_vector = self._char_ngram_counter(case.text)
-            similarity = self._cosine_similarity(query_vector, case_vector)
+        for indexed_case in self._get_indexed_cases():
+            similarity = self._cosine_similarity(
+                left=query_vector,
+                right=indexed_case.vector,
+                left_norm=query_norm,
+                right_norm=indexed_case.vector_norm,
+            )
+            case = indexed_case.case
             scored_cases.append(
                 RetrievedCase(
                     id=case.id,
@@ -143,6 +172,37 @@ class RagPhishingDetector:
 
         scored_cases.sort(key=lambda item: item.similarity, reverse=True)
         return scored_cases[:top_k]
+
+    def _get_indexed_cases(self) -> list[IndexedTrainingCase]:
+        """학습 사례를 한 번만 읽고 n-gram 벡터를 메모리에 캐싱한다."""
+        if self._indexed_cases is not None:
+            return self._indexed_cases
+
+        with self._index_lock:
+            if self._indexed_cases is not None:
+                return self._indexed_cases
+
+            indexed_cases: list[IndexedTrainingCase] = []
+            for case in list_all_training_cases():
+                # 긴 통화 전문 전체를 벡터화하면 첫 검색이 느려지므로 검색용 텍스트만 압축해서 사용한다.
+                vector = self._char_ngram_counter(self._search_text(case.text))
+                indexed_cases.append(
+                    IndexedTrainingCase(
+                        case=RetrievedCase(
+                            id=case.id,
+                            external_id=case.external_id,
+                            text=case.text,
+                            label=case.label,
+                            source=case.source,
+                            similarity=0.0,
+                        ),
+                        vector=vector,
+                        vector_norm=self._counter_norm(vector),
+                    )
+                )
+
+            self._indexed_cases = indexed_cases
+            return indexed_cases
 
     def _calculate_risk_score(
         self,
@@ -200,6 +260,10 @@ class RagPhishingDetector:
             return 0.82
         return 0.72
 
+    def _should_skip_rag_for_strong_signal(self, matched_patterns: list[str]) -> bool:
+        """강한 피싱 조합이 이미 잡혔으면 실시간 응답을 위해 RAG 검색을 건너뛴다."""
+        return self._strong_phishing_combo_floor(matched_patterns) > 0
+
     def _normal_consulting_discount(self, text: str) -> float:
         """정상 금융 상담에서 자주 나오는 안전 신호가 있으면 위험도를 낮춘다."""
         safe_patterns = [
@@ -229,20 +293,30 @@ class RagPhishingDetector:
 
         return grams
 
-    def _cosine_similarity(self, left: Counter[str], right: Counter[str]) -> float:
+    def _cosine_similarity(
+        self,
+        left: Counter[str],
+        right: Counter[str],
+        left_norm: Optional[float] = None,
+        right_norm: Optional[float] = None,
+    ) -> float:
         """두 희소 Counter 벡터의 코사인 유사도를 계산한다."""
         if not left or not right:
             return 0.0
 
         common_keys = set(left) & set(right)
         dot_product = sum(left[key] * right[key] for key in common_keys)
-        left_norm = math.sqrt(sum(value * value for value in left.values()))
-        right_norm = math.sqrt(sum(value * value for value in right.values()))
+        left_norm = left_norm if left_norm is not None else self._counter_norm(left)
+        right_norm = right_norm if right_norm is not None else self._counter_norm(right)
 
         if left_norm == 0 or right_norm == 0:
             return 0.0
 
         return dot_product / (left_norm * right_norm)
+
+    def _counter_norm(self, vector: Counter[str]) -> float:
+        """코사인 유사도 계산에 쓰는 벡터 크기를 계산한다."""
+        return math.sqrt(sum(value * value for value in vector.values()))
 
     def _risk_level(self, risk_score: float) -> str:
         """숫자 위험 점수를 간단한 위험 등급으로 변환한다."""
@@ -255,3 +329,10 @@ class RagPhishingDetector:
     def _clean_text(self, text: str) -> str:
         """원문 한국어는 유지하면서 반복 공백만 정규화한다."""
         return re.sub(r"\s+", " ", text).strip()
+
+    def _search_text(self, text: str, max_length: int = 1200) -> str:
+        """RAG 검색 벡터 생성에 사용할 길이를 제한한다."""
+        cleaned_text = self._clean_text(text)
+        if len(cleaned_text) <= max_length:
+            return cleaned_text
+        return cleaned_text[:max_length].rstrip()
