@@ -22,6 +22,7 @@ from app.repository import (
     insert_notification,
     insert_training_cases,
     list_call_logs,
+    list_call_messages,
     list_training_cases,
     parse_training_cases_json,
     save_detection_result,
@@ -34,6 +35,7 @@ from app.schemas import (
     NotificationCreate,
     TrainingCase,
 )
+from app.services.koelectra_scorer import TH_WARNING, KoElectraScorer, risk_level_of
 from app.services.rag_detector import RagPhishingDetector
 
 
@@ -41,12 +43,14 @@ if load_dotenv:
     load_dotenv()
 
 detector = RagPhishingDetector()
+scorer = KoElectraScorer()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """API 서버가 시작될 때 SQLite DB를 초기화"""
+    """API 서버가 시작될 때 SQLite DB를 초기화하고 KoELECTRA 모델을 미리 로드한다."""
     init_db()
+    await asyncio.to_thread(scorer.preload)
     yield
 
 
@@ -168,24 +172,35 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
 
 
 def _detect_and_persist(log_id: int, top_k: int = 5) -> dict:
-    """누적 통화 내용을 탐지하고 결과와 필요 알림 이력을 DB에 저장한다."""
+    """누적 통화 내용을 탐지하고 결과와 필요 알림 이력을 DB에 저장한다.
+
+    역할 분담: 위험 점수(risk_score)는 KoELECTRA가 전담하고,
+    룰 매칭·RAG 유사 사례·근거 문장은 기존 detector가 설명 전용으로 생성한다.
+    """
     call_text = build_call_text(log_id)
-    detection = detector.detect(text=call_text, top_k=top_k)
-    detected_label = 1 if detection.is_phishing else 0
+    ke_score = scorer.score(list_call_messages(log_id))
+    detection = detector.detect(text=call_text, top_k=top_k, risk_score_override=ke_score)
+
+    risk_level = risk_level_of(ke_score)
+    is_phishing = ke_score >= TH_WARNING
+    detected_label = 1 if is_phishing else 0
     retrieved_case_ids = [case.id for case in detection.retrieved_cases]
+    # 알림 중복 방지: high로 "새로 진입"할 때만 발송 (high 유지 중 매 턴 재발송 금지)
+    previous_level = get_call_log(log_id).risk_level
 
     saved_result = save_detection_result(
         log_id=log_id,
-        risk_score=detection.risk_score,
-        risk_level=detection.risk_level,
+        risk_score=ke_score,
+        risk_level=risk_level,
         detected_label=detected_label,
         core_evidence=detection.core_evidence,
         matched_patterns=detection.matched_patterns,
         retrieved_case_ids=retrieved_case_ids,
+        model_version="koelectra-v1",
     )
 
     notification = None
-    if detection.is_phishing and detection.risk_level == "high":
+    if risk_level == "high" and previous_level != "high":
         notification = insert_notification(
             log_id=log_id,
             notification=NotificationCreate(
@@ -198,9 +213,9 @@ def _detect_and_persist(log_id: int, top_k: int = 5) -> dict:
     latest_call = get_call_log(log_id)
 
     return {
-        "is_phishing": detection.is_phishing,
-        "risk_level": detection.risk_level,
-        "risk_score": detection.risk_score,
+        "is_phishing": is_phishing,
+        "risk_level": risk_level,
+        "risk_score": round(ke_score, 4),
         "phishing_type": latest_call.phishing_type,
         "matched_patterns": detection.matched_patterns,
         "core_evidence": detection.core_evidence,

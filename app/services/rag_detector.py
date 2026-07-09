@@ -110,8 +110,14 @@ class RagPhishingDetector:
         with self._index_lock:
             self._indexed_cases = None
 
-    def detect(self, text: str, top_k: int = 5) -> RagDetectResponse:
-        """RAG 검색, 점수 계산, 근거 생성을 실행한다."""
+    def detect(
+        self, text: str, top_k: int = 5, risk_score_override: Optional[float] = None
+    ) -> RagDetectResponse:
+        """RAG 검색, 점수 계산, 근거 생성을 실행한다.
+
+        risk_score_override가 주어지면(예: KoELECTRA 점수) 룰+RAG 점수 대신 그 값을
+        사용한다. 근거 문장이 실제 표시 점수와 어긋나지 않게 하기 위함이다.
+        """
         cleaned_text = self._clean_text(text)
         if not cleaned_text:
             raise ValueError("탐지할 텍스트가 비어 있습니다.")
@@ -128,6 +134,8 @@ class RagPhishingDetector:
             retrieved_cases=retrieved_cases,
             matched_patterns=matched_patterns,
         )
+        if risk_score_override is not None:
+            risk_score = risk_score_override
         risk_level = self._risk_level(risk_score)
         evidence = self.evidence_generator.generate(
             text=cleaned_text,
