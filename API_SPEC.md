@@ -170,9 +170,12 @@ WS /ws/calls/analyze
 ```json
 {
   "type": "analysis_ack",
+  "log_id": 1,
+  "message_id": 12,
   "is_phishing": false,
   "risk_score": 0.2,
-  "risk_level": "low"
+  "risk_level": "low",
+  "phishing_type": ""
 }
 ```
 
@@ -181,14 +184,25 @@ WS /ws/calls/analyze
 ```json
 {
   "type": "phishing_detected",
+  "log_id": 1,
+  "message_id": 13,
   "is_phishing": true,
   "risk_score": 0.84,
   "risk_level": "high",
+  "phishing_type": "기관 사칭",
   "matched_patterns": ["수사기관/공공기관 사칭"],
   "core_evidence": "검찰 사칭 표현이 탐지되었습니다.",
-  "notification": {}
+  "notification": {
+    "id": 3,
+    "message": "보이스피싱 위험이 높게 탐지되었습니다. 통화를 종료하고 공식 대표번호로 확인하세요.",
+    "status": "sent",
+    "created_at": "2026-07-09 10:21:03"
+  }
 }
 ```
+
+실시간 분석 응답에는 RAG 유사 사례 원문(`retrieved_cases`)을 포함하지 않습니다.
+유사 사례는 백엔드 내부 근거 생성에만 사용하고, 클라이언트에는 위험도와 핵심근거만 반환합니다.
 
 에러 응답:
 

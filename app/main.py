@@ -17,6 +17,7 @@ from app.database import init_db
 from app.repository import (
     build_call_text,
     create_call_log,
+    get_call_log,
     insert_call_message,
     insert_notification,
     insert_training_cases,
@@ -192,15 +193,17 @@ def _detect_and_persist(log_id: int, top_k: int = 5) -> dict:
             ),
         )
 
+    latest_call = get_call_log(log_id)
+
     return {
         "is_phishing": detection.is_phishing,
         "risk_level": detection.risk_level,
         "risk_score": detection.risk_score,
+        "phishing_type": latest_call.phishing_type,
         "matched_patterns": detection.matched_patterns,
         "core_evidence": detection.core_evidence,
-        "retrieved_cases": [case.model_dump() for case in detection.retrieved_cases],
         "saved_result": saved_result.model_dump(),
-        "notification": notification.model_dump() if notification else None,
+        "notification": _compact_notification(notification.model_dump()) if notification else None,
     }
 
 
@@ -215,21 +218,32 @@ def _build_client_analysis_response(log_id: int, message: dict, detection: dict)
         return {
             "type": "analysis_ack",
             "log_id": log_id,
-            "message": message,
+            "message_id": message["id"],
             "is_phishing": False,
             "risk_score": detection["risk_score"],
             "risk_level": detection["risk_level"],
+            "phishing_type": detection["phishing_type"],
         }
 
     return {
         "type": "phishing_detected",
         "log_id": log_id,
-        "message": message,
+        "message_id": message["id"],
         "is_phishing": True,
         "risk_score": detection["risk_score"],
         "risk_level": detection["risk_level"],
+        "phishing_type": detection["phishing_type"],
         "matched_patterns": detection["matched_patterns"],
         "core_evidence": detection["core_evidence"],
-        "retrieved_cases": detection["retrieved_cases"],
         "notification": detection["notification"],
+    }
+
+
+def _compact_notification(notification: dict) -> dict:
+    """클라이언트 응답에는 알림 표시용 최소 필드만 포함한다."""
+    return {
+        "id": notification["id"],
+        "message": notification["message"],
+        "status": notification["status"],
+        "created_at": notification["created_at"],
     }

@@ -58,7 +58,7 @@ class EvidenceGenerator:
             "input_text": text,
             "risk_score": risk_score,
             "matched_patterns": matched_patterns,
-            "retrieved_cases": [case.model_dump() for case in retrieved_cases],
+            "retrieved_cases": self._compact_retrieved_cases(retrieved_cases),
         }
 
         prompt = f"""
@@ -69,6 +69,7 @@ class EvidenceGenerator:
 - 입력에 없는 사실은 만들지 않는다.
 - 단정 대신 "의심된다", "위험 신호가 있다"처럼 신중하게 표현한다.
 - 유사 사례 기반 근거와 규칙 기반 위험 신호를 함께 설명한다.
+- 3문장 이내, 300자 이내로 작성한다.
 - 마지막에 공식 대표번호로 직접 확인하라는 안전 행동을 제안한다.
 
 JSON:
@@ -86,8 +87,9 @@ JSON:
                 {"role": "user", "content": prompt},
             ],
             temperature=0.2,
+            max_tokens=220,
         )
-        return response.choices[0].message.content or ""
+        return self._trim_text(response.choices[0].message.content or "", max_length=500)
 
     def _uses_openrouter(self) -> bool:
         """OpenRouter 호환 엔드포인트를 사용하는지 확인한다."""
@@ -139,3 +141,26 @@ JSON:
 
         lines.append("의심되는 경우 통화를 종료하고 기관의 공식 대표번호로 직접 확인하세요.")
         return "\n".join(lines)
+
+    def _compact_retrieved_cases(self, retrieved_cases: list[RetrievedCase]) -> list[dict[str, Any]]:
+        """LLM 근거 생성에는 유사 사례 전문 대신 짧은 요약만 전달한다."""
+        compact_cases: list[dict[str, Any]] = []
+        for case in retrieved_cases:
+            compact_cases.append(
+                {
+                    "id": case.id,
+                    "external_id": case.external_id,
+                    "label": case.label,
+                    "source": case.source,
+                    "similarity": case.similarity,
+                    "snippet": self._trim_text(case.text, max_length=180),
+                }
+            )
+        return compact_cases
+
+    def _trim_text(self, text: str, max_length: int) -> str:
+        """긴 텍스트를 지정 길이로 줄인다."""
+        normalized = " ".join(text.split())
+        if len(normalized) <= max_length:
+            return normalized
+        return normalized[: max_length - 3].rstrip() + "..."
