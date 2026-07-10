@@ -12,7 +12,7 @@ from fastapi import HTTPException
 def transcribe_audio_file(audio_path: str) -> list[dict]:
     """오디오 파일을 전사 모듈에 넘겨 발화 segment 목록으로 변환한다."""
     try:
-        from mp3_json import transcribe_with_speakers
+        from app.mp3_json import transcribe_with_speakers
     except ModuleNotFoundError as exc:
         raise HTTPException(
             status_code=501,

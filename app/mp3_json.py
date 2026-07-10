@@ -1,7 +1,7 @@
 """화자 구분 + 타임스탬프 + dataset.json 스키마 통합 (로컬 모델 버전)
-   - ASR: whisper large-v3, 단어 단위 타임스탬프
-     · macOS(Apple Silicon) → mlx-whisper
-     · Linux(NVIDIA GPU)   → faster-whisper (CUDA)
+   - ASR: faster-whisper small 기본값, 단어 단위 타임스탬프
+     · WHISPER_BACKEND=mlx 설정 시 macOS Apple Silicon에서 mlx-whisper 사용 가능
+     · WHISPER_MODEL 환경변수로 small, medium, large-v3 등을 선택
    - 화자 구분: sherpa-onnx (pyannote segmentation 3.0 + NeMo TitaNet)
      → 화자 turn 경계에 맞춰 whisper 단어를 재조립 (한 segment에 두 화자 섞임 방지)
    - API 키·HF 토큰 불필요, 완전 로컬 실행
@@ -11,20 +11,15 @@ import os
 import json
 import platform
 import numpy as np
-import sherpa_onnx
 
 IS_MAC = platform.system() == "Darwin"
-
-if IS_MAC:
-    import mlx_whisper
-    from mlx_whisper.audio import load_audio, SAMPLE_RATE
-    WHISPER_MODEL = "mlx-community/whisper-large-v3-mlx"
-else:
-    from faster_whisper import WhisperModel, BatchedInferencePipeline
-    from faster_whisper.audio import decode_audio
-    SAMPLE_RATE = 16000
-    WHISPER_MODEL = "large-v3"
-    _fw_model = None
+SAMPLE_RATE = 16000
+WHISPER_BACKEND = os.environ.get("WHISPER_BACKEND", "faster-whisper").strip().lower()
+WHISPER_MODEL = os.environ.get(
+    "WHISPER_MODEL",
+    "mlx-community/whisper-large-v3-mlx" if WHISPER_BACKEND == "mlx" else "small",
+)
+_fw_model = None
 INITIAL_PROMPT = (
     "이 통화는 보이스피싱 의심 통화이거나 정상 금융 상담 통화입니다. "
     "계좌, 이체, 대출, 개인정보 관련 용어에 유의해 정확히 전사하세요."
@@ -37,7 +32,15 @@ EMBEDDING_MODEL = os.path.join(MODEL_DIR, "nemo_en_titanet_large.onnx")
 _diarizer = None
 
 
-def get_diarizer(n_speakers: int) -> sherpa_onnx.OfflineSpeakerDiarization:
+def has_diarization_models() -> bool:
+    """화자 분리 ONNX 모델 파일이 준비되어 있는지 확인한다."""
+    return os.path.exists(SEGMENTATION_MODEL) and os.path.exists(EMBEDDING_MODEL)
+
+
+def get_diarizer(n_speakers: int):
+    """sherpa-onnx 화자 분리 모델을 실제 분석 시점에만 로드한다."""
+    import sherpa_onnx
+
     global _diarizer
     if _diarizer is None:
         config = sherpa_onnx.OfflineSpeakerDiarizationConfig(
@@ -78,14 +81,21 @@ def collapse_repetition(segments: list[dict], threshold: int = 3) -> list[dict]:
 
 def load_audio_np(audio_file_path: str) -> np.ndarray:
     """16kHz mono float32 numpy 배열로 오디오를 로드한다."""
-    if IS_MAC:
+    if WHISPER_BACKEND == "mlx":
+        from mlx_whisper.audio import load_audio
+
         return np.array(load_audio(audio_file_path))
+
+    from faster_whisper.audio import decode_audio
+
     return decode_audio(audio_file_path, sampling_rate=SAMPLE_RATE)
 
 
 def transcribe_words(audio: np.ndarray) -> list[dict]:
     """whisper로 전사하고 단어 단위 (start, end, word) 리스트를 반환한다."""
-    if IS_MAC:
+    if WHISPER_BACKEND == "mlx":
+        import mlx_whisper
+
         result = mlx_whisper.transcribe(
             audio,
             path_or_hf_repo=WHISPER_MODEL,
@@ -100,13 +110,15 @@ def transcribe_words(audio: np.ndarray) -> list[dict]:
             if seg["text"].strip() and seg.get("no_speech_prob", 0) <= 0.6
         ]
     else:
+        from faster_whisper import BatchedInferencePipeline, WhisperModel
+
         global _fw_model
         if _fw_model is None:
             _fw_model = BatchedInferencePipeline(
                 WhisperModel(
                     WHISPER_MODEL,
-                    device="cuda",
-                    compute_type=os.environ.get("FW_COMPUTE", "float16"),
+                    device=os.environ.get("FW_DEVICE", "cpu"),
+                    compute_type=os.environ.get("FW_COMPUTE", "int8"),
                 )
             )
         fw_segments, _ = _fw_model.transcribe(
@@ -135,9 +147,17 @@ def transcribe_words(audio: np.ndarray) -> list[dict]:
 
 def diarize_turns(audio: np.ndarray, n_speakers: int) -> list[dict]:
     """화자 turn 목록 [{'start', 'end', 'speaker'(int)}] 반환."""
-    sd = get_diarizer(n_speakers)
-    result = sd.process(audio).sort_by_start_time()
-    return [{"start": r.start, "end": r.end, "speaker": r.speaker} for r in result]
+    if not has_diarization_models():
+        print("  [warn] sherpa-onnx 화자 분리 모델 파일이 없어 단일 화자로 처리합니다.")
+        return []
+
+    try:
+        sd = get_diarizer(n_speakers)
+        result = sd.process(audio).sort_by_start_time()
+        return [{"start": r.start, "end": r.end, "speaker": r.speaker} for r in result]
+    except Exception as exc:
+        print(f"  [warn] 화자 분리 실패로 단일 화자로 처리합니다: {exc}")
+        return []
 
 
 def resolve_sentence_speakers(words: list[dict]) -> None:

@@ -4,8 +4,12 @@ python-multipart==0.0.20
 pydantic==2.10.4
 openai>=1.0.0
 python-dotenv>=1.0.0
+urllib3<2
 numpy>=1.24.0
 scikit-learn>=1.4.0
+sherpa-onnx>=1.10.0
+faster-whisper>=1.0.0
+mlx-whisper>=0.4.0
 torch>=2.0.0
 transformers>=4.40.0
 accelerate>=0.26.0
