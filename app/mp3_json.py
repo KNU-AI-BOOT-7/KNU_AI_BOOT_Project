@@ -19,6 +19,7 @@ WHISPER_MODEL = os.environ.get(
     "WHISPER_MODEL",
     "mlx-community/whisper-large-v3-mlx" if WHISPER_BACKEND == "mlx" else "small",
 )
+NO_SPEECH_THRESHOLD = float(os.environ.get("WHISPER_NO_SPEECH_THRESHOLD", "0.98"))
 _fw_model = None
 INITIAL_PROMPT = (
     "이 통화는 보이스피싱 의심 통화이거나 정상 금융 상담 통화입니다. "
@@ -64,6 +65,9 @@ def get_diarizer(n_speakers: int):
 
 def collapse_repetition(segments: list[dict], threshold: int = 3) -> list[dict]:
     """같은 텍스트가 연속으로 threshold회 이상 반복되면(hallucination loop) 첫 발화만 남긴다."""
+    if not segments:
+        return []
+
     cleaned = []
     run_start = 0
     for i in range(len(segments) + 1):
@@ -107,35 +111,37 @@ def transcribe_words(audio: np.ndarray) -> list[dict]:
         segments = [
             {"text": seg["text"].strip(), "words": seg.get("words", [])}
             for seg in result["segments"]
-            if seg["text"].strip() and seg.get("no_speech_prob", 0) <= 0.6
+            if seg["text"].strip() and seg.get("no_speech_prob", 0) < NO_SPEECH_THRESHOLD
         ]
     else:
-        from faster_whisper import BatchedInferencePipeline, WhisperModel
+        from faster_whisper import WhisperModel
 
         global _fw_model
         if _fw_model is None:
-            _fw_model = BatchedInferencePipeline(
-                WhisperModel(
-                    WHISPER_MODEL,
-                    device=os.environ.get("FW_DEVICE", "cpu"),
-                    compute_type=os.environ.get("FW_COMPUTE", "int8"),
-                )
+            _fw_model = WhisperModel(
+                WHISPER_MODEL,
+                device=os.environ.get("FW_DEVICE", "cpu"),
+                compute_type=os.environ.get("FW_COMPUTE", "int8"),
             )
         fw_segments, _ = _fw_model.transcribe(
             audio,
             language="ko",
             initial_prompt=INITIAL_PROMPT,
+            condition_on_previous_text=False,  # 이전 문맥 반복으로 생기는 환각 문장 방지
             word_timestamps=True,
-            batch_size=int(os.environ.get("FW_BATCH", "8")),  # 공유 GPU에서 처리량 확보
+            vad_filter=False,
         )
-        segments = [
-            {
-                "text": seg.text.strip(),
-                "words": [{"word": w.word, "start": w.start, "end": w.end} for w in (seg.words or [])],
-            }
-            for seg in fw_segments
-            if seg.text.strip() and seg.no_speech_prob <= 0.6
-        ]
+        segments = []
+        for seg in fw_segments:
+            text = seg.text.strip()
+            if not text or seg.no_speech_prob >= NO_SPEECH_THRESHOLD:
+                continue
+
+            words = [{"word": w.word, "start": w.start, "end": w.end} for w in (seg.words or [])]
+            if not words:
+                # 단어 타임스탬프가 비어도 segment 텍스트는 탐지에 필요하므로 보존한다.
+                words = [{"word": text, "start": seg.start, "end": seg.end}]
+            segments.append({"text": text, "words": words})
     segments = collapse_repetition(segments)
 
     words = []
@@ -282,8 +288,8 @@ def assign_words_to_turns(words: list[dict], turns: list[dict]) -> list[dict]:
 
     return [
         {
-            "start": round(s["start"], 2),
-            "end": round(s["end"], 2),
+            "start": float(round(s["start"], 2)),
+            "end": float(round(s["end"], 2)),
             "speaker": name_map[s["speaker_id"]],
             "text": s["text"].strip(),
         }
