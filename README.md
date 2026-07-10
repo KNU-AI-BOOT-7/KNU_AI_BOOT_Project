@@ -158,6 +158,12 @@ LLM_MODEL=openai/gpt-4o-mini
 OPENROUTER_APP_TITLE=VoiceGuard AI
 ```
 
+CORS 허용 origin은 `.env`의 `CORS_ALLOW_ORIGINS`에 쉼표로 구분해 설정합니다.
+
+```env
+CORS_ALLOW_ORIGINS=http://localhost:5173,http://172.16.83.29:5173
+```
+
 API 키가 없거나 호출에 실패하면 템플릿 기반 근거가 자동으로 반환됩니다.
 
 ## 학습 데이터 준비
@@ -217,6 +223,19 @@ models/koelectra
 
 ```bash
 uvicorn app.main:app
+```
+
+같은 네트워크의 프론트/모바일 기기에서 백엔드에 접속해야 하면 `0.0.0.0`으로 실행합니다.
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+현재 Mac의 IP가 `172.16.83.29`라면 프론트에서는 아래 주소를 사용합니다.
+
+```text
+http://172.16.83.29:8000
+ws://172.16.83.29:8000/ws/calls/analyze
 ```
 
 개발 중 자동 reload 실행:
