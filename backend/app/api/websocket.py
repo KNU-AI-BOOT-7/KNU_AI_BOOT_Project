@@ -35,15 +35,19 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
     try:
         while True:
             packet = await websocket.receive()
+            if packet.get("type") == "websocket.disconnect":
+                return
 
             if packet.get("bytes") is not None:
                 if log_id is None:
-                    await websocket.send_json(
+                    if not await _send_json(
+                        websocket,
                         {
                             "type": "error",
                             "message": "오디오 chunk를 보내기 전에 먼저 start 메시지로 통화 기록을 생성해야 합니다.",
                         }
-                    )
+                    ):
+                        return
                     continue
 
                 chunk_index += 1
@@ -53,11 +57,13 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
                     audio_format=audio_format,
                     chunk_index=chunk_index,
                 )
-                await websocket.send_json(response)
+                if not await _send_json(websocket, response):
+                    return
                 continue
 
             if packet.get("text") is None:
-                await websocket.send_json({"type": "error", "message": "지원하지 않는 WebSocket 메시지입니다."})
+                if not await _send_json(websocket, {"type": "error", "message": "지원하지 않는 WebSocket 메시지입니다."}):
+                    return
                 continue
 
             payload = _parse_ws_json(packet["text"])
@@ -74,23 +80,27 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
                 )
                 log_id = call.id
                 chunk_index = 0
-                await websocket.send_json(
+                if not await _send_json(
+                    websocket,
                     {
                         "type": "call_started",
                         "call": call.model_dump(),
                         "audio_format": audio_format,
                     }
-                )
+                ):
+                    return
                 continue
 
             if event_type == "audio_chunk":
                 if log_id is None:
-                    await websocket.send_json(
+                    if not await _send_json(
+                        websocket,
                         {
                             "type": "error",
                             "message": "오디오 chunk를 보내기 전에 먼저 start 메시지로 통화 기록을 생성해야 합니다.",
                         }
-                    )
+                    ):
+                        return
                     continue
 
                 raw_audio = audio_transcriber.decode_audio_chunk_payload(payload)
@@ -102,20 +112,24 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
                     audio_format=chunk_format,
                     chunk_index=chunk_index,
                 )
-                await websocket.send_json(response)
+                if not await _send_json(websocket, response):
+                    return
                 continue
 
             if event_type != "message":
-                await websocket.send_json({"type": "error", "message": "지원하지 않는 메시지 타입입니다."})
+                if not await _send_json(websocket, {"type": "error", "message": "지원하지 않는 메시지 타입입니다."}):
+                    return
                 continue
 
             if log_id is None:
-                await websocket.send_json(
+                if not await _send_json(
+                    websocket,
                     {
                         "type": "error",
                         "message": "통화 발화를 보내기 전에 먼저 start 메시지로 통화 기록을 생성해야 합니다.",
                     }
-                )
+                ):
+                    return
                 continue
 
             saved_message = insert_call_message(
@@ -136,12 +150,32 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
                 saved_message.model_dump(),
                 detection,
             )
-            await websocket.send_json(response)
+            if not await _send_json(websocket, response):
+                return
     except WebSocketDisconnect:
         return
     except Exception as exc:
-        await websocket.send_json({"type": "error", "message": str(exc)})
+        logger.exception("WebSocket 실시간 분석 처리 실패")
+        await _send_json(websocket, {"type": "error", "message": str(exc)})
+        await _close_websocket(websocket)
+
+
+async def _send_json(websocket: WebSocket, payload: dict) -> bool:
+    """닫혔거나 닫히는 중인 WebSocket에는 응답을 보내지 않는다."""
+    try:
+        await websocket.send_json(payload)
+        return True
+    except (RuntimeError, WebSocketDisconnect):
+        logger.info("이미 종료된 WebSocket이라 응답 전송을 생략합니다.")
+        return False
+
+
+async def _close_websocket(websocket: WebSocket) -> None:
+    """이미 닫힌 WebSocket close 시도를 조용히 무시한다."""
+    try:
         await websocket.close()
+    except RuntimeError:
+        return
 
 
 async def _handle_audio_chunk(
