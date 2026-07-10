@@ -122,15 +122,12 @@ python-dotenv
 urllib3
 numpy
 scikit-learn
-sherpa-onnx
-faster-whisper
-mlx-whisper
 torch
 transformers
 accelerate
 ```
 
-오디오 전사는 `backend.app.mp3_json.transcribe_with_speakers`를 호출합니다. 기본값은 `faster-whisper` 기반 로컬 전사이며, 화자분리 모델 파일이 없으면 단일 화자로 전사 후 분석을 계속합니다.
+오디오 전사는 `backend.app.mp3_json.transcribe_with_speakers`를 호출합니다. OpenRouter API의 멀티모달 모델(기본 `google/gemini-3.5-flash`, `STT_MODEL` 환경변수로 변경 가능)이 전사·화자 구분·타임스탬프를 한 번에 수행하며, `.env`의 `OPENROUTER_API_KEY`가 필요합니다.
 
 ## 설치 방법
 
