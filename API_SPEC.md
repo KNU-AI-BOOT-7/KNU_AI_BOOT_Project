@@ -157,7 +157,7 @@ POST /calls/analyze-audio
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
-  -F "file=@call.wav"
+  -F "file=@call.m4a"
 ```
 
 응답:
@@ -166,7 +166,7 @@ curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
 {
   "type": "audio_analysis",
   "log_id": 11,
-  "file_name": "call.wav",
+  "file_name": "call.m4a",
   "segments": [
     {
       "chunk_id": 1,
@@ -186,7 +186,7 @@ curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
 }
 ```
 
-현재 오디오 분석은 `backend.app.mp3_json`의 로컬 STT 전사 모듈을 사용합니다.
+녹음 파일 분석은 `mp3`, `wav`, `m4a` 업로드를 지원합니다. `m4a`는 서버에서 임시 `wav`로 변환한 뒤 `backend.app.mp3_json` 전사 모듈에 전달합니다.
 
 ## 7. 실시간 통화 분석
 

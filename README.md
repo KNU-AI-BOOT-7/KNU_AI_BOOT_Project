@@ -30,7 +30,7 @@ VoiceGuard AI는 통화 중 발생하는 보이스피싱 위험 신호를 실시
 - 규칙 기반 주요 위험 패턴 탐지
 - 정상 금융상담 과탐지 보정
 - 통화 기록 목록/상세 조회 API
-- 녹음 파일 업로드 분석 API 기반 구조
+- mp3/wav/m4a 녹음 파일 업로드 분석 API 기반 구조
 - OpenAI/OpenRouter 기반 핵심 근거 생성
 - LLM 호출 실패 시 템플릿 근거 자동 대체
 
@@ -120,6 +120,7 @@ pydantic
 openai
 python-dotenv
 urllib3
+av
 numpy
 scikit-learn
 torch
@@ -127,7 +128,7 @@ transformers
 accelerate
 ```
 
-오디오 전사는 `backend.app.mp3_json.transcribe_with_speakers`를 호출합니다. OpenRouter API의 멀티모달 모델(기본 `google/gemini-3.5-flash`, `STT_MODEL` 환경변수로 변경 가능)이 전사·화자 구분·타임스탬프를 한 번에 수행하며, `.env`의 `OPENROUTER_API_KEY`가 필요합니다.
+오디오 전사는 `backend.app.mp3_json.transcribe_with_speakers`를 호출합니다. OpenRouter API의 멀티모달 모델(기본 `google/gemini-3.5-flash`, `STT_MODEL` 환경변수로 변경 가능)이 전사·화자 구분·타임스탬프를 한 번에 수행하며, `.env`의 `OPENROUTER_API_KEY`가 필요합니다. 녹음파일 업로드 분석은 `mp3`, `wav`, `m4a`를 지원하고, `m4a`는 서버에서 임시 `wav`로 변환합니다.
 
 ## 설치 방법
 

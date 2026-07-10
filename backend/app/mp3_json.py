@@ -3,8 +3,11 @@
    - 키는 .env의 OPENROUTER_API_KEY, 모델은 STT_MODEL 환경변수로 변경 가능
 """
 import base64
+from contextlib import contextmanager
 import json
 import os
+import tempfile
+import wave
 
 from openai import OpenAI
 
@@ -25,6 +28,60 @@ PROMPT = """이 오디오는 보이스피싱 의심 통화이거나 정상 금�
 [{"start": "MM:SS", "end": "MM:SS", "speaker": "화자A", "text": "..."}]"""
 
 _client = None
+
+
+@contextmanager
+def _open_supported_audio_file(audio_file_path: str):
+    """OpenRouter 입력 오디오가 지원하는 mp3/wav로 파일을 준비한다.
+
+    m4a/mp4/aac 컨테이너는 그대로 전송하지 않고 임시 wav 파일로 변환한다.
+    """
+    ext = os.path.splitext(audio_file_path)[1].lower().lstrip(".")
+    if ext in {"mp3", "mpeg", "mpga"}:
+        yield audio_file_path, "mp3"
+        return
+    if ext == "wav":
+        yield audio_file_path, "wav"
+        return
+    if ext in {"m4a", "mp4", "aac"}:
+        converted_path = _convert_audio_to_wav(audio_file_path)
+        try:
+            yield converted_path, "wav"
+        finally:
+            os.unlink(converted_path)
+        return
+
+    raise ValueError(f"지원하지 않는 오디오 파일 형식입니다: .{ext}")
+
+
+def _convert_audio_to_wav(audio_file_path: str) -> str:
+    """PyAV로 m4a 계열 오디오를 16kHz mono wav로 변환한다."""
+    import av
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp.close()
+
+    resampler = av.AudioResampler(format="s16", layout="mono", rate=16000)
+    try:
+        with av.open(audio_file_path) as container, wave.open(tmp.name, "wb") as wav_file:
+            audio_stream = next((stream for stream in container.streams if stream.type == "audio"), None)
+            if audio_stream is None:
+                raise ValueError("오디오 스트림을 찾을 수 없습니다.")
+
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(16000)
+
+            for packet in container.demux(audio_stream):
+                for frame in packet.decode():
+                    for resampled_frame in resampler.resample(frame):
+                        pcm = resampled_frame.to_ndarray().reshape(-1)
+                        wav_file.writeframes(pcm.tobytes())
+    except Exception:
+        os.unlink(tmp.name)
+        raise
+
+    return tmp.name
 
 
 def _load_key():
@@ -67,18 +124,17 @@ def transcribe_with_speakers(audio_file_path: str, expected_speakers: int = 2, r
     if _client is None:
         _client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=_load_key())
 
-    ext = os.path.splitext(audio_file_path)[1].lower().lstrip(".")
-    audio_format = "mp3" if ext in ("mp3", "mpeg", "mpga") else "wav"
-    with open(audio_file_path, "rb") as f:
-        audio_b64 = base64.b64encode(f.read()).decode()
+    with _open_supported_audio_file(audio_file_path) as (prepared_audio_path, audio_format):
+        with open(prepared_audio_path, "rb") as f:
+            audio_b64 = base64.b64encode(f.read()).decode()
 
-    messages = [{
-        "role": "user",
-        "content": [
-            {"type": "text", "text": PROMPT.replace("{n}", str(expected_speakers))},
-            {"type": "input_audio", "input_audio": {"data": audio_b64, "format": audio_format}},
-        ],
-    }]
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": PROMPT.replace("{n}", str(expected_speakers))},
+                {"type": "input_audio", "input_audio": {"data": audio_b64, "format": audio_format}},
+            ],
+        }]
 
     last_err = None
     for _ in range(retries + 1):
@@ -137,7 +193,7 @@ if __name__ == "__main__":
         print(f"기존 결과 {len(dataset)}개 call 로드 — 이어서 진행")
     done_ids = {c["call_id"] for c in dataset}
 
-    audio_files = [f for f in sorted(os.listdir(TEST_DIR)) if f.lower().endswith((".mp3", ".wav"))]
+    audio_files = [f for f in sorted(os.listdir(TEST_DIR)) if f.lower().endswith((".mp3", ".wav", ".m4a"))]
 
     for idx, filename in enumerate(audio_files, 1):
         call_id = os.path.splitext(filename)[0]

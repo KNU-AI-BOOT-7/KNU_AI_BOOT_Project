@@ -96,15 +96,23 @@ async def analyze_call_audio(
     call_logs, call_messages, detection_results를 재사용한다.
     """
     suffix = os.path.splitext(file.filename or "")[1].lower()
-    if suffix not in (".mp3", ".wav"):
-        raise HTTPException(status_code=400, detail="mp3 또는 wav 파일만 업로드할 수 있습니다.")
+    if suffix not in (".mp3", ".wav", ".m4a"):
+        raise HTTPException(status_code=400, detail="mp3, wav, m4a 파일만 업로드할 수 있습니다.")
 
     raw_bytes = await file.read()
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     try:
         tmp.write(raw_bytes)
         tmp.close()
-        raw_segments = await asyncio.to_thread(audio_transcriber.transcribe_audio_file, tmp.name)
+        try:
+            raw_segments = await asyncio.to_thread(audio_transcriber.transcribe_audio_file, tmp.name)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"오디오 파일을 전사하지 못했습니다: {exc}",
+            ) from exc
     finally:
         os.unlink(tmp.name)
 
