@@ -1,29 +1,144 @@
 # KNU_AI_BOOT_Project_7조
 
-## 주제: 보이스피싱 탐지 및 예방을 위한 AI 모델 개발
+## 보이스피싱 탐지 및 예방 AI 서비스
 
-### 멤버
+실시간 통화 음성을 3~4초 단위로 받아 전사하고, 누적 통화 내용을 기반으로 보이스피싱 위험도와 핵심 근거를 클라이언트에 반환하는 FastAPI 기반 백엔드입니다.
+
+## 멤버
 
 - 박준영
 - 이재현
 - 장지훈
 - 최세민
 
-## RAG 기반 보이스피싱 탐지 API
+## 서비스 정의
 
-이 프로젝트는 정상/보이스피싱 학습 사례 JSON 파일을 SQLite DB에 저장한 뒤, 저장된 사례를 검색해 RAG 기반으로 위험도를 계산하고 생성형 모델 또는 템플릿으로 핵심근거를 생성합니다.
+VoiceGuard AI는 통화 중 발생하는 보이스피싱 위험 신호를 실시간으로 탐지하는 서비스입니다.
 
-### 주요 기능
+- 프론트엔드는 통화 시작 시 WebSocket을 연결하고, 이후 mp3/wav 오디오 chunk를 백엔드로 전송합니다.
+- 백엔드는 오디오를 전사해 통화 발화 로그로 저장합니다.
+- 누적 통화 내용은 KoELECTRA 모델과 RAG/규칙 기반 탐지 로직으로 분석됩니다.
+- 위험도가 높으면 피싱 유형, 위험도 수치, 주요 키워드, 핵심 근거, 알림 정보를 클라이언트에 반환합니다.
+- 모든 통화 기록, 발화 내용, 탐지 결과, 알림 이력은 SQLite DB에 저장됩니다.
 
-- 학습용 JSON 사례 파일 업로드 및 DB 저장
-- DB 학습 사례 기반 유사 문장 검색
-- 실시간 통화 로그, 통화 내용, 탐지 결과, 알림 이력 저장
-- 보이스피싱 위험 패턴 탐지
-- RAG 점수와 규칙 점수를 결합한 위험도 계산
-- 생성형 모델 기반 핵심근거 생성
-- LLM 설정이 없을 때 템플릿 핵심근거 자동 생성
+## 주요 기능
 
-### JSON 데이터 형식
+- 실시간 mp3/wav 오디오 chunk WebSocket 수신
+- 오디오 전사 결과를 통화 내용 로그로 저장
+- KoELECTRA 기반 보이스피싱 위험도 산출
+- RAG 기반 유사 사례 검색 및 근거 생성
+- 규칙 기반 주요 위험 패턴 탐지
+- 정상 금융상담 과탐지 보정
+- 통화 기록 목록/상세 조회 API
+- 녹음 파일 업로드 분석 API 기반 구조
+- OpenAI/OpenRouter 기반 핵심 근거 생성
+- LLM 호출 실패 시 템플릿 근거 자동 대체
+
+## 아키텍처
+
+```mermaid
+flowchart LR
+    Client["Mobile Client"] -->|WebSocket start| API["FastAPI Server"]
+    Client -->|mp3/wav chunk| API
+    API --> STT["Audio Transcription Module"]
+    STT --> API
+    API --> DB["SQLite DB"]
+    API --> KE["KoELECTRA Risk Scorer"]
+    API --> RAG["RAG + Rule Detector"]
+    RAG --> DB
+    API --> LLM["OpenAI/OpenRouter Evidence Generator"]
+    API -->|risk_score, evidence, alert| Client
+```
+
+### 처리 흐름
+
+1. 클라이언트가 `WS /ws/calls/analyze`에 연결합니다.
+2. 클라이언트가 `start` JSON을 보내면 백엔드는 `call_logs`에 통화 기록을 생성합니다.
+3. 클라이언트가 3~4초 단위 mp3/wav 바이너리 frame을 전송합니다.
+4. 백엔드는 오디오 chunk를 전사하고 `call_messages`에 저장합니다.
+5. 저장된 전체 통화 내용을 KoELECTRA로 점수화합니다.
+6. RAG/규칙 탐지로 주요 키워드와 유사 사례 근거를 생성합니다.
+7. 탐지 결과를 `detection_results`에 저장합니다.
+8. 고위험이면 `notification_logs`에 알림 이력을 저장하고 클라이언트에 `audio_phishing_detected`를 반환합니다.
+
+## 사용 기술
+
+| 구분 | 기술 |
+| --- | --- |
+| Backend | Python, FastAPI, Uvicorn |
+| API 통신 | REST API, WebSocket |
+| 데이터 저장 | SQLite |
+| 데이터 검증 | Pydantic |
+| AI 모델 | KoELECTRA, PyTorch, Transformers |
+| 모델 학습 | scikit-learn, HuggingFace Trainer, Accelerate |
+| RAG 검색 | SQLite 저장 사례 + 문자 n-gram cosine similarity |
+| 생성형 근거 | OpenAI 호환 SDK, OpenRouter 지원 |
+| 환경 변수 | python-dotenv |
+| 파일 업로드 | python-multipart |
+
+## 필요 라이브러리
+
+`requirements.txt` 기준 주요 라이브러리는 아래와 같습니다.
+
+```text
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+openai
+python-dotenv
+numpy
+scikit-learn
+torch
+transformers
+accelerate
+```
+
+오디오 전사는 현재 `mp3_json.transcribe_with_speakers` 모듈을 호출하도록 연결되어 있습니다. 해당 모듈이 없으면 실시간 오디오 chunk 요청은 `audio_chunk_error`로 전사 모듈 미설정 메시지를 반환합니다.
+
+## 설치 방법
+
+Python 3.9 이상 환경을 권장합니다.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+macOS 기본 Python을 사용할 경우 `urllib3 NotOpenSSLWarning`이 보일 수 있습니다. 서버 실행을 막는 오류는 아닙니다.
+
+## 환경 변수 설정
+
+LLM 기반 근거 생성을 사용하려면 프로젝트 루트에 `.env`를 생성합니다.
+
+OpenAI API를 사용할 경우:
+
+```env
+OPENAI_API_KEY=sk-...
+LLM_MODEL=gpt-4o-mini
+```
+
+OpenRouter 키를 사용할 경우:
+
+```env
+OPENAI_API_KEY=sk-or-v1...
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=openai/gpt-4o-mini
+OPENROUTER_APP_TITLE=VoiceGuard AI
+```
+
+API 키가 없거나 호출에 실패하면 템플릿 기반 근거가 자동으로 반환됩니다.
+
+## 학습 데이터 준비
+
+KoELECTRA 학습 스크립트는 아래 파일을 사용합니다.
+
+```text
+data/PhishCatch-Data.json
+```
+
+학습 데이터 JSON 형식:
 
 ```json
 {
@@ -48,35 +163,62 @@
 }
 ```
 
-`label`은 보이스피싱이면 `1`, 정상이면 `0`입니다. `id`는 통화/세션 한 건을 구분하는 값이고, 한 통화 안의 발화는 `turns[].turn_index`로 구분합니다. `text` 필드를 직접 넣지 않아도 서버가 `turns`를 합쳐 RAG 검색용 텍스트를 자동 생성합니다.
+`label`은 보이스피싱이면 `1`, 정상이면 `0`입니다. `id`는 통화/세션 한 건을 구분하는 값이고, 한 통화 안의 발화는 `turns[].turn_index`로 구분합니다.
 
-### 실행 방법
+## KoELECTRA 모델 학습
+
+학습 데이터가 준비된 상태에서 아래 명령을 실행합니다.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+.venv/bin/python train_transformer.py
 ```
 
-API 문서는 서버 실행 후 아래 주소에서 확인할 수 있습니다.
+학습이 끝나면 아래 경로에 모델 파일이 생성됩니다.
+
+```text
+models/koelectra
+```
+
+서버 시작 시 `models/koelectra`가 없으면 KoELECTRA 점수 계산을 사용하지 않고 RAG/규칙 기반 점수로 대체합니다.
+
+## 서버 실행 방법
+
+일반 실행:
+
+```bash
+uvicorn app.main:app
+```
+
+개발 중 자동 reload 실행:
+
+```bash
+uvicorn app.main:app --reload --reload-dir app --reload-exclude ".venv/*" --reload-exclude ".venv/**"
+```
+
+서버 실행 후 Swagger 문서는 아래 주소에서 확인할 수 있습니다.
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-### 샘플 데이터 업로드
+상태 확인:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+## 학습 사례 업로드
+
+RAG 검색에 사용할 정상/피싱 사례 JSON을 업로드합니다.
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/training-cases/import-json" \
   -F "file=@samples/phishing_cases.json"
 ```
 
-### 실시간 통화 음성 분석
+## 실시간 통화 음성 분석
 
-클라이언트는 통화가 시작되면 먼저 `start` 메시지를 보내고, 백엔드는 이 시점에 `call_logs`에 통화 기록을 바로 생성합니다. 이후 클라이언트는 3~4초 단위의 mp3/wav 오디오 chunk를 WebSocket 바이너리 frame으로 전송합니다.
-
-백엔드는 전달받은 오디오를 전사한 뒤 `call_messages`에 저장하고 누적 통화 내용을 KoELECTRA/RAG 기반으로 분석합니다. 분석 결과는 `detection_results`에 저장되며, 고위험 보이스피싱으로 판단되면 `notification_logs`에 알림 이력을 자동 저장하고 위험도와 핵심근거를 클라이언트로 반환합니다.
+WebSocket 주소:
 
 ```text
 ws://127.0.0.1:8000/ws/calls/analyze
@@ -93,25 +235,92 @@ ws://127.0.0.1:8000/ws/calls/analyze
 }
 ```
 
-`start` 메시지 없이 오디오 chunk를 먼저 보내면 백엔드는 통화 기록을 만들지 않고 에러를 반환합니다.
-
-오디오 chunk 전송:
+통화 시작 이후 클라이언트는 3~4초 단위의 mp3/wav 오디오를 WebSocket binary frame으로 전송합니다.
 
 ```text
 <3~4초 wav 또는 mp3 binary frame>
 ```
 
-정상으로 분석되면 서버는 `audio_analysis_ack` 응답을 반환합니다. 보이스피싱으로 판단되면 `audio_phishing_detected` 응답에 `risk_score`, `risk_level`, `matched_patterns`, `core_evidence`, `notification`을 포함해 반환합니다.
+테스트 도구에서 바이너리 frame 전송이 어려우면 base64 JSON 방식도 사용할 수 있습니다.
 
-### 생성형 핵심근거 생성
-
-`OPENAI_API_KEY`가 설정되어 있으면 `app/services/evidence_generator.py`에서 OpenAI 호환 SDK를 사용해 핵심근거를 생성합니다. 설정이 없거나 호출에 실패하면 템플릿 기반 핵심근거를 반환합니다.
-
-OpenRouter 키를 사용할 경우 `.env`를 아래처럼 설정합니다.
-
-```env
-OPENAI_API_KEY=sk-or-v1...
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
-LLM_MODEL=openai/gpt-4o-mini
-OPENROUTER_APP_TITLE=VoiceGuard AI
+```json
+{
+  "type": "audio_chunk",
+  "chunk_index": 1,
+  "audio_format": "wav",
+  "audio_base64": "UklGR..."
+}
 ```
+
+정상 응답:
+
+```json
+{
+  "type": "audio_analysis_ack",
+  "log_id": 1,
+  "chunk_index": 1,
+  "message_ids": [12],
+  "is_phishing": false,
+  "risk_score": 0.12,
+  "risk_level": "low",
+  "phishing_type": "정상"
+}
+```
+
+피싱 탐지 응답:
+
+```json
+{
+  "type": "audio_phishing_detected",
+  "log_id": 1,
+  "chunk_index": 3,
+  "message_ids": [13],
+  "is_phishing": true,
+  "risk_score": 0.86,
+  "risk_level": "high",
+  "phishing_type": "수사기관 사칭",
+  "matched_patterns": ["수사기관/공공기관 사칭", "범죄 연루 압박"],
+  "core_evidence": "수사기관 사칭 표현과 범죄 연루 압박 표현이 탐지되었습니다.",
+  "notification": {
+    "id": 3,
+    "message": "보이스피싱 위험이 높게 탐지되었습니다. 통화를 종료하고 공식 대표번호로 확인하세요.",
+    "status": "sent",
+    "created_at": "2026-07-10 10:21:03"
+  }
+}
+```
+
+## 주요 API
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| GET | `/health` | 서버 상태 확인 |
+| POST | `/training-cases/import-json` | 학습/RAG 사례 JSON 업로드 |
+| GET | `/training-cases` | 저장된 학습 사례 조회 |
+| GET | `/calls` | 통화 기록 목록 및 위험 등급별 개수 조회 |
+| GET | `/calls/{log_id}` | 통화 기록 상세 조회 |
+| POST | `/calls/analyze-audio` | 녹음 파일 업로드 분석 |
+| WS | `/ws/calls/analyze` | 실시간 오디오 chunk 분석 |
+
+자세한 요청/응답 예시는 `API_SPEC.md`를 참고합니다.
+
+## DB 저장 구조
+
+| 테이블 | 역할 |
+| --- | --- |
+| `training_cases` | RAG/학습용 정상·피싱 사례 |
+| `training_case_turns` | 학습 사례의 발화 단위 데이터 |
+| `call_logs` | 통화 기록 및 최신 위험 상태 |
+| `call_messages` | 전사된 통화 발화 로그 |
+| `detection_results` | 각 분석 시점의 위험도와 근거 |
+| `notification_logs` | 고위험 탐지 시 알림 이력 |
+
+## 위험도 기준
+
+```text
+low: risk_score < 0.45
+medium: 0.45 <= risk_score < 0.75
+high: risk_score >= 0.75
+```
+
+KoELECTRA 기반 실시간 판정에서는 `0.70` 이상부터 피싱 의심으로 처리하고, `0.85` 이상을 강한 경고로 사용합니다.
