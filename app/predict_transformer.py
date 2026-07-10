@@ -5,7 +5,7 @@ import os
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIR = os.path.join(BASE_DIR, "models", "koelectra")
 MAX_LEN = 256
 

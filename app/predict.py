@@ -1,17 +1,18 @@
 """저장된 베이스라인 모델로 직접 테스트.
 
 사용법:
-  .venv/bin/python predict.py                    # 대화형 모드 (문장 입력 → 판정)
-  .venv/bin/python predict.py "검찰청입니다..."   # 한 번만 판정
+  .venv/bin/python -m app.predict                    # 대화형 모드 (문장 입력 → 판정)
+  .venv/bin/python -m app.predict "검찰청입니다..."   # 한 번만 판정
 """
 import os
 import sys
 
 import joblib
 
-from train_baseline import normalize
+from app.train_baseline import normalize
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "baseline.joblib")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "baseline.joblib")
 
 
 def predict(model, text):

@@ -16,7 +16,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_PATH = os.path.join(BASE_DIR, "data", "PhishCatch-Data.json")
 MODEL_PATH = os.path.join(BASE_DIR, "models", "baseline.joblib")
 SEED = 42

@@ -58,7 +58,7 @@ class RealtimeDetector:
 
     def _ke_score(self):
         """1차 KoELECTRA: 화자 태그 포맷(학습과 동일). 누적 vs 최근 WINDOW턴 중 높은 확률."""
-        from predict_transformer import predict_proba
+        from app.predict_transformer import predict_proba
         tagged = [_tag(r, t) for r, t in self.turns]
         cum = " ".join(tagged)
         win = " ".join(tagged[-WINDOW:])
@@ -136,7 +136,7 @@ def _eval_stage1():
     import json
 
     from sklearn.model_selection import train_test_split
-    from predict_transformer import predict_proba, _fmt
+    from app.predict_transformer import predict_proba, _fmt
 
     base = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(base, "data", "PhishCatch-Data.json"), encoding="utf-8") as f:

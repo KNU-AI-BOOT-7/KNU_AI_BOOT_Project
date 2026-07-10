@@ -9,7 +9,8 @@ import glob
 import os
 import re
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(BASE_DIR, "data")
 OUT_PATH = os.path.join(DATA_DIR, "PhishCatch-Data.json")
 
 # 피싱 전사본은 실명·기관명을 O/X/* 로 마스킹했으나 정상/실제 STT에는 없다.

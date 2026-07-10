@@ -50,6 +50,36 @@ flowchart LR
     API -->|risk_score, evidence, alert| Client
 ```
 
+## 파일 구조
+
+```text
+app/
+  main.py                     # FastAPI 앱 생성, lifespan, router 등록
+  api/
+    routes.py                 # REST API: health, calls, training-cases, analyze-audio
+    websocket.py              # WebSocket 실시간 오디오 chunk 분석
+  services/
+    audio_transcriber.py      # mp3/wav 전사, base64, 오디오 포맷 정규화
+    call_analyzer.py          # KoELECTRA/RAG 분석, 탐지 결과 저장, 응답 생성
+    koelectra_scorer.py       # KoELECTRA 모델 로드 및 위험도 점수 계산
+    rag_detector.py           # RAG 유사 사례 검색 및 규칙 기반 패턴 탐지
+    evidence_generator.py     # OpenAI/OpenRouter 또는 템플릿 기반 근거 생성
+  repository.py               # SQLite CRUD 및 조회 응답 조립
+  database.py                 # SQLite 연결과 테이블 초기화
+  schemas.py                  # Pydantic 요청/응답 스키마
+  train_transformer.py        # KoELECTRA fine-tuning 학습 스크립트
+  predict_transformer.py      # 학습된 KoELECTRA 모델 추론 스크립트
+data/
+  PhishCatch-Data.json        # KoELECTRA 학습 데이터
+  voice_phishing.db           # SQLite DB
+models/
+  koelectra/                  # 학습된 KoELECTRA 모델 파일
+API_SPEC.md                   # API 요청/응답 명세
+requirements.txt              # Python 의존성
+```
+
+API 계층(`app/api`)은 요청/응답 처리만 담당하고, 실제 분석 로직은 서비스 계층(`app/services`)으로 분리했습니다. DB 접근은 `repository.py`로 모아 API와 저장소 구현이 직접 섞이지 않도록 구성했습니다.
+
 ### 처리 흐름
 
 1. 클라이언트가 `WS /ws/calls/analyze`에 연결합니다.
@@ -170,7 +200,7 @@ data/PhishCatch-Data.json
 학습 데이터가 준비된 상태에서 아래 명령을 실행합니다.
 
 ```bash
-.venv/bin/python train_transformer.py
+.venv/bin/python -m app.train_transformer
 ```
 
 학습이 끝나면 아래 경로에 모델 파일이 생성됩니다.
