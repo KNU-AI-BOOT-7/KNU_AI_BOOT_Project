@@ -9,7 +9,7 @@ import sys
 
 import joblib
 
-from app.train_baseline import normalize
+from backend.app.train_baseline import normalize
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_PATH = os.path.join(BASE_DIR, "models", "baseline.joblib")

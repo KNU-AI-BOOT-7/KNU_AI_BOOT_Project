@@ -7,7 +7,7 @@ import logging
 import os
 from typing import Any, Optional
 
-from app.schemas import RetrievedCase
+from backend.app.schemas import RetrievedCase
 
 
 logger = logging.getLogger(__name__)

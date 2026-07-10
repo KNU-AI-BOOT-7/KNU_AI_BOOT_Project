@@ -9,9 +9,9 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
-from app.repository import create_call_log, insert_call_message
-from app.schemas import CallLogCreate, CallMessageCreate
-from app.services import audio_transcriber, call_analyzer
+from backend.app.repository import create_call_log, insert_call_message
+from backend.app.schemas import CallLogCreate, CallMessageCreate
+from backend.app.services import audio_transcriber, call_analyzer
 
 
 logger = logging.getLogger(__name__)

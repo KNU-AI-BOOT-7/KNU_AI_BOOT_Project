@@ -13,10 +13,10 @@ try:
 except ModuleNotFoundError:
     load_dotenv = None
 
-from app.api.routes import router as rest_router
-from app.api.websocket import router as websocket_router
-from app.database import init_db
-from app.services.call_analyzer import preload_koelectra_model
+from backend.app.api.routes import router as rest_router
+from backend.app.api.websocket import router as websocket_router
+from backend.app.database import init_db
+from backend.app.services.call_analyzer import preload_koelectra_model
 
 
 if load_dotenv:

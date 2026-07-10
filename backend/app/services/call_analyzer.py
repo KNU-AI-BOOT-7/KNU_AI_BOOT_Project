@@ -7,16 +7,16 @@ import logging
 import re
 from typing import Optional
 
-from app.repository import (
+from backend.app.repository import (
     build_call_text,
     get_call_log,
     insert_notification,
     list_call_messages,
     save_detection_result,
 )
-from app.schemas import NotificationCreate
-from app.services.koelectra_scorer import MODEL_DIR, TH_WARNING, KoElectraScorer, risk_level_of
-from app.services.rag_detector import RagPhishingDetector
+from backend.app.schemas import NotificationCreate
+from backend.app.services.koelectra_scorer import MODEL_DIR, TH_WARNING, KoElectraScorer, risk_level_of
+from backend.app.services.rag_detector import RagPhishingDetector
 
 
 logger = logging.getLogger(__name__)

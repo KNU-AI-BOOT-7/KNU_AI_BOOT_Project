@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Optional
 
-from app.repository import list_all_training_cases
-from app.schemas import RagDetectResponse, RetrievedCase
-from app.services.evidence_generator import EvidenceGenerator
+from backend.app.repository import list_all_training_cases
+from backend.app.schemas import RagDetectResponse, RetrievedCase
+from backend.app.services.evidence_generator import EvidenceGenerator
 
 
 @dataclass(frozen=True)

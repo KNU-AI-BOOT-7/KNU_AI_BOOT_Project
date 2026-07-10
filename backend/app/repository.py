@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.database import get_connection
-from app.schemas import (
+from backend.app.database import get_connection
+from backend.app.schemas import (
     CallLogDetail,
     CallLogListItem,
     CallLogListResponse,

@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from app.repository import (
+from backend.app.repository import (
     create_call_log,
     get_call_log_detail_response,
     get_call_log_list_response,
@@ -18,7 +18,7 @@ from app.repository import (
     list_training_cases,
     parse_training_cases_json,
 )
-from app.schemas import (
+from backend.app.schemas import (
     CallLogCreate,
     CallLogDetail,
     CallLogListResponse,
@@ -26,7 +26,7 @@ from app.schemas import (
     ImportResult,
     TrainingCase,
 )
-from app.services import audio_transcriber, call_analyzer
+from backend.app.services import audio_transcriber, call_analyzer
 
 
 router = APIRouter()

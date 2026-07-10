@@ -42,7 +42,7 @@ class KoElectraScorer:
     def preload(self) -> None:
         """서버 시작 시 모델을 미리 로드해 첫 요청 지연을 없앤다."""
         self._ensure_model_ready()
-        from app.predict_transformer import predict_proba
+        from backend.app.predict_transformer import predict_proba
 
         predict_proba(["[A] 로드 확인"])
 
@@ -55,7 +55,7 @@ class KoElectraScorer:
             return 0.0
 
         self._ensure_model_ready()
-        from app.predict_transformer import predict_proba
+        from backend.app.predict_transformer import predict_proba
 
         speaker_map: dict[str, str] = {}
         tagged: list[str] = []
