@@ -16,7 +16,7 @@ def transcribe_audio_file(audio_path: str) -> list[dict]:
     except ModuleNotFoundError as exc:
         raise HTTPException(
             status_code=501,
-            detail="오디오 전사 모듈(mp3_json)이 아직 설정되어 있지 않습니다.",
+            detail="오디오 전사 모듈(backend.app.mp3_json)이 아직 설정되어 있지 않습니다.",
         ) from exc
 
     return transcribe_with_speakers(audio_path)

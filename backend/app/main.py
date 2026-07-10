@@ -16,11 +16,12 @@ except ModuleNotFoundError:
 from backend.app.api.routes import router as rest_router
 from backend.app.api.websocket import router as websocket_router
 from backend.app.database import init_db
+from backend.app.paths import ENV_PATH
 from backend.app.services.call_analyzer import preload_koelectra_model
 
 
 if load_dotenv:
-    load_dotenv()
+    load_dotenv(ENV_PATH)
 
 
 DEFAULT_CORS_ORIGINS = [

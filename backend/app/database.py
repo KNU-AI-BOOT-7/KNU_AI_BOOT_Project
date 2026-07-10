@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-DB_PATH = DATA_DIR / "voice_phishing.db"
+from backend.app.paths import DATA_DIR, DB_PATH
 
 
 def get_connection() -> sqlite3.Connection:

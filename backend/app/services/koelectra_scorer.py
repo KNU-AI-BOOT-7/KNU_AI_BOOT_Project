@@ -13,10 +13,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from backend.app.paths import KOELECTRA_MODEL_DIR
 
 WINDOW = 10  # 최근 N턴 sliding window (256토큰 절단으로 긴 통화 후반을 놓치는 것 방지)
-MODEL_DIR = Path(__file__).resolve().parents[2] / "models" / "koelectra"
+MODEL_DIR = KOELECTRA_MODEL_DIR
 
 # 기능명세서 경고 기준: 0.70 이상 "주의", 0.85 이상 "강한 경고"
 TH_WARNING = 0.70

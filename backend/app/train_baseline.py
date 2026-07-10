@@ -16,9 +16,11 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_PATH = os.path.join(BASE_DIR, "data", "PhishCatch-Data.json")
-MODEL_PATH = os.path.join(BASE_DIR, "models", "baseline.joblib")
+from backend.app.paths import BASELINE_MODEL_PATH, TRAINING_DATA_PATH
+
+
+DATA_PATH = TRAINING_DATA_PATH
+MODEL_PATH = BASELINE_MODEL_PATH
 SEED = 42
 
 
@@ -76,7 +78,7 @@ def main():
     print("\n피싱 쪽 증거 상위 15개 :", ", ".join(repr(w) for w in vocab[top[-15:]][::-1]))
     print("정상 쪽 증거 상위 15개 :", ", ".join(repr(w) for w in vocab[top[:15]]))
 
-    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+    os.makedirs(MODEL_PATH.parent, exist_ok=True)
     joblib.dump(model, MODEL_PATH)
     print(f"\n모델 저장: {MODEL_PATH}")
 

@@ -325,7 +325,7 @@ def transcribe_with_speakers(audio_file_path: str, expected_speakers: int = 2) -
 if __name__ == "__main__":
     import sys
 
-    # 사용법: python mp3_json.py [오디오 폴더 경로] [phishing_type]
+    # 사용법: python -m backend.app.mp3_json [오디오 폴더 경로] [phishing_type]
     if len(sys.argv) > 1:
         TEST_DIR = sys.argv[1]
         PHISHING_TYPE = sys.argv[2] if len(sys.argv) > 2 else None

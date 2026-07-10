@@ -53,22 +53,24 @@ flowchart LR
 ## 파일 구조
 
 ```text
-app/
-  main.py                     # FastAPI 앱 생성, lifespan, router 등록
-  api/
-    routes.py                 # REST API: health, calls, training-cases, analyze-audio
-    websocket.py              # WebSocket 실시간 오디오 chunk 분석
-  services/
-    audio_transcriber.py      # mp3/wav 전사, base64, 오디오 포맷 정규화
-    call_analyzer.py          # KoELECTRA/RAG 분석, 탐지 결과 저장, 응답 생성
-    koelectra_scorer.py       # KoELECTRA 모델 로드 및 위험도 점수 계산
-    rag_detector.py           # RAG 유사 사례 검색 및 규칙 기반 패턴 탐지
-    evidence_generator.py     # OpenAI/OpenRouter 또는 템플릿 기반 근거 생성
-  repository.py               # SQLite CRUD 및 조회 응답 조립
-  database.py                 # SQLite 연결과 테이블 초기화
-  schemas.py                  # Pydantic 요청/응답 스키마
-  train_transformer.py        # KoELECTRA fine-tuning 학습 스크립트
-  predict_transformer.py      # 학습된 KoELECTRA 모델 추론 스크립트
+backend/
+  app/
+    main.py                   # FastAPI 앱 생성, lifespan, router 등록
+    api/
+      routes.py               # REST API: health, calls, training-cases, analyze-audio
+      websocket.py            # WebSocket 실시간 오디오 chunk 분석
+    services/
+      audio_transcriber.py    # mp3/wav 전사, base64, 오디오 포맷 정규화
+      call_analyzer.py        # KoELECTRA/RAG 분석, 탐지 결과 저장, 응답 생성
+      koelectra_scorer.py     # KoELECTRA 모델 로드 및 위험도 점수 계산
+      rag_detector.py         # RAG 유사 사례 검색 및 규칙 기반 패턴 탐지
+      evidence_generator.py   # OpenAI/OpenRouter 또는 템플릿 기반 근거 생성
+    repository.py             # SQLite CRUD 및 조회 응답 조립
+    database.py               # SQLite 연결과 테이블 초기화
+    paths.py                  # 프로젝트 루트 기준 data/models/.env 경로 관리
+    schemas.py                # Pydantic 요청/응답 스키마
+    train_transformer.py      # KoELECTRA fine-tuning 학습 스크립트
+    predict_transformer.py    # 학습된 KoELECTRA 모델 추론 스크립트
 data/
   PhishCatch-Data.json        # KoELECTRA 학습 데이터
   voice_phishing.db           # SQLite DB
@@ -78,7 +80,7 @@ API_SPEC.md                   # API 요청/응답 명세
 requirements.txt              # Python 의존성
 ```
 
-API 계층(`app/api`)은 요청/응답 처리만 담당하고, 실제 분석 로직은 서비스 계층(`app/services`)으로 분리했습니다. DB 접근은 `repository.py`로 모아 API와 저장소 구현이 직접 섞이지 않도록 구성했습니다.
+API 계층(`backend/app/api`)은 요청/응답 처리만 담당하고, 실제 분석 로직은 서비스 계층(`backend/app/services`)으로 분리했습니다. DB 접근은 `repository.py`로 모아 API와 저장소 구현이 직접 섞이지 않도록 구성했습니다.
 
 ### 처리 흐름
 
@@ -117,14 +119,18 @@ python-multipart
 pydantic
 openai
 python-dotenv
+urllib3
 numpy
 scikit-learn
+sherpa-onnx
+faster-whisper
+mlx-whisper
 torch
 transformers
 accelerate
 ```
 
-오디오 전사는 현재 `mp3_json.transcribe_with_speakers` 모듈을 호출하도록 연결되어 있습니다. 해당 모듈이 없으면 실시간 오디오 chunk 요청은 `audio_chunk_error`로 전사 모듈 미설정 메시지를 반환합니다.
+오디오 전사는 `backend.app.mp3_json.transcribe_with_speakers`를 호출합니다. 기본값은 `faster-whisper` 기반 로컬 전사이며, 화자분리 모델 파일이 없으면 단일 화자로 전사 후 분석을 계속합니다.
 
 ## 설치 방법
 
@@ -136,7 +142,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-macOS 기본 Python을 사용할 경우 `urllib3 NotOpenSSLWarning`이 보일 수 있습니다. 서버 실행을 막는 오류는 아닙니다.
+macOS 기본 Python의 LibreSSL 경고를 피하기 위해 `urllib3<2`를 사용합니다.
 
 ## 환경 변수 설정
 
@@ -158,10 +164,10 @@ LLM_MODEL=openai/gpt-4o-mini
 OPENROUTER_APP_TITLE=VoiceGuard AI
 ```
 
-CORS 허용 origin은 `.env`의 `CORS_ALLOW_ORIGINS`에 쉼표로 구분해 설정합니다.
+CORS 허용 origin은 기본 개발 포트(`3000`, `5173`, `8080`, `8081`)가 포함되어 있으며, 추가 origin은 `.env`의 `CORS_ALLOW_ORIGINS`에 쉼표로 구분해 설정합니다.
 
 ```env
-CORS_ALLOW_ORIGINS=http://localhost:5173,http://172.16.83.29:5173
+CORS_ALLOW_ORIGINS=http://172.16.83.29:5173,http://172.16.80.202:8081
 ```
 
 API 키가 없거나 호출에 실패하면 템플릿 기반 근거가 자동으로 반환됩니다.
@@ -206,7 +212,7 @@ data/PhishCatch-Data.json
 학습 데이터가 준비된 상태에서 아래 명령을 실행합니다.
 
 ```bash
-.venv/bin/python -m app.train_transformer
+.venv/bin/python -m backend.app.train_transformer
 ```
 
 학습이 끝나면 아래 경로에 모델 파일이 생성됩니다.
@@ -222,13 +228,13 @@ models/koelectra
 일반 실행:
 
 ```bash
-uvicorn app.main:app
+uvicorn backend.app.main:app
 ```
 
 같은 네트워크의 프론트/모바일 기기에서 백엔드에 접속해야 하면 `0.0.0.0`으로 실행합니다.
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 ```
 
 현재 Mac의 IP가 `172.16.83.29`라면 프론트에서는 아래 주소를 사용합니다.
@@ -241,7 +247,7 @@ ws://172.16.83.29:8000/ws/calls/analyze
 개발 중 자동 reload 실행:
 
 ```bash
-uvicorn app.main:app --reload --reload-dir app --reload-exclude ".venv/*" --reload-exclude ".venv/**"
+uvicorn backend.app.main:app --reload --reload-dir backend --reload-exclude ".venv/*" --reload-exclude ".venv/**"
 ```
 
 서버 실행 후 Swagger 문서는 아래 주소에서 확인할 수 있습니다.
@@ -262,7 +268,7 @@ RAG 검색에 사용할 정상/피싱 사례 JSON을 업로드합니다.
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/training-cases/import-json" \
-  -F "file=@samples/phishing_cases.json"
+  -F "file=@data/PhishCatch-Data.json"
 ```
 
 ## 실시간 통화 음성 분석

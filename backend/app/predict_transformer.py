@@ -1,12 +1,13 @@
 """KoELECTRA fine-tuned 모델 추론 + 베이스라인 대비 비교 진단."""
 import json
-import os
 
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_DIR = os.path.join(BASE_DIR, "models", "koelectra")
+from backend.app.paths import KOELECTRA_MODEL_DIR, TRAINING_DATA_PATH
+
+
+MODEL_DIR = KOELECTRA_MODEL_DIR
 MAX_LEN = 256
 
 _tok = None
@@ -17,8 +18,8 @@ _device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.
 def _load():
     global _tok, _model
     if _model is None:
-        _tok = AutoTokenizer.from_pretrained(MODEL_DIR)
-        _model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR).to(_device).eval()
+        _tok = AutoTokenizer.from_pretrained(str(MODEL_DIR))
+        _model = AutoModelForSequenceClassification.from_pretrained(str(MODEL_DIR)).to(_device).eval()
 
 
 def predict_proba(texts):
@@ -36,7 +37,7 @@ def _fmt(turns):
 if __name__ == "__main__":
     from sklearn.model_selection import train_test_split
 
-    with open(os.path.join(BASE_DIR, "data", "PhishCatch-Data.json"), encoding="utf-8") as f:
+    with open(TRAINING_DATA_PATH, encoding="utf-8") as f:
         cases = json.load(f)["cases"]
     labels = [c["label"] for c in cases]
     _, ev = train_test_split(cases, test_size=0.2, stratify=labels, random_state=42)

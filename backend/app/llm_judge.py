@@ -4,7 +4,7 @@
 OpenRouter API 사용, 키는 .env의 OPENROUTER_API_KEY.
 
 사용 예:
-    from app.llm_judge import judge
+    from backend.app.llm_judge import judge
     result = judge("검찰청입니다 본인 계좌가 범죄에 연루되어...")
     # {"is_voice_phishing": true, "risk_score": 0.9, "reason": [...], ...}
 """
@@ -13,7 +13,9 @@ import os
 
 from openai import OpenAI
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from backend.app.paths import ENV_PATH
+
+
 MODEL = os.environ.get("LLM_JUDGE_MODEL", "anthropic/claude-haiku-4.5")
 MAX_CHARS = 4000  # 긴 통화는 최근 내용 위주로 자름
 
@@ -51,8 +53,8 @@ SYSTEM_PROMPT = """너는 보이스피싱 탐지 전문가다. 통화 전사 텍
 
 def _load_key():
     key = os.environ.get("OPENROUTER_API_KEY")
-    if not key:
-        with open(os.path.join(BASE_DIR, ".env"), encoding="utf-8") as f:
+    if not key and ENV_PATH.exists():
+        with open(ENV_PATH, encoding="utf-8") as f:
             for line in f:
                 if line.startswith("OPENROUTER_API_KEY="):
                     key = line.split("=", 1)[1].strip()

@@ -31,7 +31,7 @@ POST /training-cases/import-json
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/training-cases/import-json" \
-  -F "file=@samples/phishing_cases.json"
+  -F "file=@data/PhishCatch-Data.json"
 ```
 
 JSON 형식:
@@ -186,7 +186,7 @@ curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
 }
 ```
 
-현재 오디오 분석은 전사 모듈(`mp3_json`)이 준비된 환경에서 동작합니다.
+현재 오디오 분석은 `backend.app.mp3_json`의 로컬 STT 전사 모듈을 사용합니다.
 
 ## 7. 실시간 통화 분석
 
@@ -321,7 +321,7 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
   "type": "audio_chunk_error",
   "log_id": 1,
   "chunk_index": 1,
-  "message": "오디오 전사 모듈(mp3_json)이 아직 설정되어 있지 않습니다."
+  "message": "오디오 chunk 전사에 실패했습니다: 전사 모듈 또는 오디오 파일을 확인하세요."
 }
 ```
 
