@@ -205,7 +205,8 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
   "type": "start",
   "device_id": 1,
   "name": "테스트 통화",
-  "file_type": "realtime"
+  "file_type": "realtime",
+  "audio_format": "wav"
 }
 ```
 
@@ -227,18 +228,28 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
     "core_evidence": "",
     "created_at": "2026-07-09 10:20:31",
     "updated_at": "2026-07-09 10:20:31"
-  }
+  },
+  "audio_format": "wav"
 }
 ```
 
-발화 분석 요청:
+오디오 chunk 요청:
+
+`start` 이후 프론트는 3~4초 단위의 mp3 또는 wav 바이너리 frame을 그대로 전송합니다.
+화자 분리가 되지 않은 상태이므로 백엔드는 전사 결과를 `unknown` 화자의 발화로 저장합니다.
+
+```text
+<3~4초 wav 또는 mp3 binary frame>
+```
+
+테스트 도구에서 바이너리 frame 전송이 어려우면 base64 JSON 방식도 사용할 수 있습니다.
 
 ```json
 {
-  "type": "message",
-  "role": "speaker_a",
-  "content": "검찰입니다. 계좌가 범죄에 연루되었습니다.",
-  "turn_index": 1
+  "type": "audio_chunk",
+  "chunk_index": 1,
+  "audio_format": "wav",
+  "audio_base64": "UklGR..."
 }
 ```
 
@@ -246,13 +257,24 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
 
 ```json
 {
-  "type": "analysis_ack",
+  "type": "audio_analysis_ack",
   "log_id": 1,
-  "message_id": 12,
+  "chunk_index": 1,
+  "message_ids": [12],
+  "transcripts": [
+    {
+      "message_id": 12,
+      "turn_index": 1,
+      "role": "unknown",
+      "content": "안녕하세요. 카드 결제일 문의드립니다.",
+      "start_time": 0.0,
+      "end_time": 3.1
+    }
+  ],
   "is_phishing": false,
   "risk_score": 0.2,
   "risk_level": "low",
-  "phishing_type": ""
+  "phishing_type": "정상"
 }
 ```
 
@@ -260,9 +282,20 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
 
 ```json
 {
-  "type": "phishing_detected",
+  "type": "audio_phishing_detected",
   "log_id": 1,
-  "message_id": 13,
+  "chunk_index": 3,
+  "message_ids": [13],
+  "transcripts": [
+    {
+      "message_id": 13,
+      "turn_index": 3,
+      "role": "unknown",
+      "content": "서울중앙지검입니다. 계좌가 범죄에 연루되었습니다.",
+      "start_time": 0.0,
+      "end_time": 3.8
+    }
+  ],
   "is_phishing": true,
   "risk_score": 0.84,
   "risk_level": "high",
@@ -281,12 +314,23 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
 실시간 분석 응답에는 RAG 유사 사례 원문(`retrieved_cases`)을 포함하지 않습니다.
 유사 사례는 백엔드 내부 근거 생성에만 사용하고, 클라이언트에는 위험도와 핵심근거만 반환합니다.
 
+전사 실패 응답:
+
+```json
+{
+  "type": "audio_chunk_error",
+  "log_id": 1,
+  "chunk_index": 1,
+  "message": "오디오 전사 모듈(mp3_json)이 아직 설정되어 있지 않습니다."
+}
+```
+
 에러 응답:
 
 ```json
 {
   "type": "error",
-  "message": "통화 발화를 보내기 전에 먼저 start 메시지로 통화 기록을 생성해야 합니다."
+  "message": "오디오 chunk를 보내기 전에 먼저 start 메시지로 통화 기록을 생성해야 합니다."
 }
 ```
 

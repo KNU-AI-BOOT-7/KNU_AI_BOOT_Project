@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import os
 import re
@@ -219,25 +220,54 @@ def _transcribe_audio(audio_path: str) -> list[dict]:
 @app.websocket("/ws/calls/analyze")
 async def analyze_call_messages(websocket: WebSocket) -> None:
     """
-    클라이언트가 3~4초 단위로 보내는 통화 발화를 받아 실시간 분석을 수행한다.
+    클라이언트가 3~4초 단위로 보내는 통화 음성 chunk를 받아 실시간 분석을 수행한다.
 
-    백엔드는 통화 발화를 생성하거나 스트리밍하지 않는다. 클라이언트가 보낸
-    발화를 저장하고, 누적 통화 내용을 분석한 뒤 피싱 위험이 감지되면
-    위험도와 핵심근거를 클라이언트로 반환한다.
+    현재 프론트에서 화자 분리를 하지 않으므로, start 이후 mp3/wav 바이너리를
+    그대로 받고 서버 전사 결과를 unknown 화자의 발화로 저장한다. 기존 JSON
+    텍스트 메시지도 테스트/하위 호환을 위해 유지한다.
 
     클라이언트 메시지 예시:
-    {"type": "start", "device_id": 1, "name": "010-1234-5678"}
-    {"type": "message", "role": "caller", "content": "검찰입니다...", "turn_index": 1}
+    {"type": "start", "device_id": 1, "name": "010-1234-5678", "audio_format": "wav"}
+    <3~4초 wav 또는 mp3 바이너리 frame>
     """
     await websocket.accept()
     log_id: Optional[int] = None
+    audio_format = "wav"
+    chunk_index = 0
 
     try:
         while True:
-            payload = await websocket.receive_json()
+            packet = await websocket.receive()
+
+            if packet.get("bytes") is not None:
+                if log_id is None:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "message": "오디오 chunk를 보내기 전에 먼저 start 메시지로 통화 기록을 생성해야 합니다.",
+                        }
+                    )
+                    continue
+
+                chunk_index += 1
+                response = await _handle_audio_chunk(
+                    log_id=log_id,
+                    audio_bytes=packet["bytes"] or b"",
+                    audio_format=audio_format,
+                    chunk_index=chunk_index,
+                )
+                await websocket.send_json(response)
+                continue
+
+            if packet.get("text") is None:
+                await websocket.send_json({"type": "error", "message": "지원하지 않는 WebSocket 메시지입니다."})
+                continue
+
+            payload = _parse_ws_json(packet["text"])
             event_type = payload.get("type", "message")
 
             if event_type == "start":
+                audio_format = _normalize_audio_format(str(payload.get("audio_format", audio_format)))
                 call = create_call_log(
                     CallLogCreate(
                         device_id=payload.get("device_id"),
@@ -246,7 +276,36 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
                     )
                 )
                 log_id = call.id
-                await websocket.send_json({"type": "call_started", "call": call.model_dump()})
+                chunk_index = 0
+                await websocket.send_json(
+                    {
+                        "type": "call_started",
+                        "call": call.model_dump(),
+                        "audio_format": audio_format,
+                    }
+                )
+                continue
+
+            if event_type == "audio_chunk":
+                if log_id is None:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "message": "오디오 chunk를 보내기 전에 먼저 start 메시지로 통화 기록을 생성해야 합니다.",
+                        }
+                    )
+                    continue
+
+                raw_audio = _decode_audio_chunk_payload(payload)
+                chunk_index = int(payload.get("chunk_index") or (chunk_index + 1))
+                chunk_format = _normalize_audio_format(str(payload.get("audio_format", audio_format)))
+                response = await _handle_audio_chunk(
+                    log_id=log_id,
+                    audio_bytes=raw_audio,
+                    audio_format=chunk_format,
+                    chunk_index=chunk_index,
+                )
+                await websocket.send_json(response)
                 continue
 
             if event_type != "message":
@@ -282,6 +341,143 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
     except Exception as exc:
         await websocket.send_json({"type": "error", "message": str(exc)})
         await websocket.close()
+
+
+async def _handle_audio_chunk(
+    log_id: int,
+    audio_bytes: bytes,
+    audio_format: str,
+    chunk_index: int,
+) -> dict:
+    """실시간 오디오 chunk를 전사하고 누적 통화 분석 응답을 만든다."""
+    if not audio_bytes:
+        return {
+            "type": "audio_chunk_error",
+            "log_id": log_id,
+            "chunk_index": chunk_index,
+            "message": "빈 오디오 chunk입니다.",
+        }
+
+    try:
+        raw_segments = await asyncio.to_thread(_transcribe_audio_bytes, audio_bytes, audio_format)
+    except HTTPException as exc:
+        return {
+            "type": "audio_chunk_error",
+            "log_id": log_id,
+            "chunk_index": chunk_index,
+            "message": exc.detail,
+        }
+    except Exception as exc:
+        logger.exception("실시간 오디오 chunk 전사 실패")
+        return {
+            "type": "audio_chunk_error",
+            "log_id": log_id,
+            "chunk_index": chunk_index,
+            "message": f"오디오 chunk 전사에 실패했습니다: {exc}",
+        }
+
+    segments = _normalize_transcribed_segments(raw_segments)
+    saved_messages = []
+    for segment in segments:
+        saved_messages.append(
+            insert_call_message(
+                log_id=log_id,
+                message=CallMessageCreate(
+                    role=segment["speaker"],
+                    content=segment["text"],
+                ),
+            )
+        )
+
+    if not saved_messages:
+        return {
+            "type": "audio_chunk_ack",
+            "log_id": log_id,
+            "chunk_index": chunk_index,
+            "transcripts": [],
+            "message": "전사된 발화가 없습니다.",
+        }
+
+    detection = await asyncio.to_thread(_detect_and_persist, log_id=log_id)
+    return _build_client_audio_analysis_response(
+        log_id=log_id,
+        chunk_index=chunk_index,
+        saved_messages=[message.model_dump() for message in saved_messages],
+        segments=segments,
+        detection=detection,
+    )
+
+
+def _transcribe_audio_bytes(audio_bytes: bytes, audio_format: str) -> list[dict]:
+    """메모리로 받은 mp3/wav chunk를 임시 파일로 저장한 뒤 전사한다."""
+    suffix = f".{_normalize_audio_format(audio_format)}"
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    try:
+        tmp.write(audio_bytes)
+        tmp.close()
+        return _transcribe_audio(tmp.name)
+    finally:
+        os.unlink(tmp.name)
+
+
+def _normalize_transcribed_segments(raw_segments: list[dict]) -> list[dict]:
+    """전사 모듈별 segment 필드 차이를 API 응답/DB 저장용으로 정규화한다."""
+    normalized_segments = []
+    for index, segment in enumerate(raw_segments or [], start=1):
+        text = str(segment.get("text", segment.get("content", ""))).strip()
+        if not text:
+            continue
+
+        normalized_segments.append(
+            {
+                "chunk_id": index,
+                "start_time": segment.get("start", segment.get("start_time")),
+                "end_time": segment.get("end", segment.get("end_time")),
+                "speaker": str(segment.get("speaker", segment.get("role", "unknown")) or "unknown"),
+                "text": text,
+            }
+        )
+
+    return normalized_segments
+
+
+def _parse_ws_json(raw_text: str) -> dict:
+    """WebSocket text frame을 JSON 객체로 변환한다."""
+    import json
+
+    try:
+        payload = json.loads(raw_text)
+    except Exception as exc:
+        raise ValueError("WebSocket text frame은 JSON 형식이어야 합니다.") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("WebSocket JSON 메시지는 객체여야 합니다.")
+
+    return payload
+
+
+def _decode_audio_chunk_payload(payload: dict) -> bytes:
+    """base64 JSON 방식으로 전달된 오디오 chunk를 디코딩한다."""
+    encoded_audio = str(payload.get("audio_base64", "")).strip()
+    if not encoded_audio:
+        raise ValueError("audio_chunk 메시지에는 audio_base64가 필요합니다.")
+
+    try:
+        return base64.b64decode(encoded_audio, validate=True)
+    except Exception as exc:
+        raise ValueError("audio_base64를 디코딩할 수 없습니다.") from exc
+
+
+def _normalize_audio_format(audio_format: str) -> str:
+    """프론트에서 넘긴 오디오 포맷명을 mp3 또는 wav로 정규화한다."""
+    normalized = audio_format.lower().strip().lstrip(".")
+    if normalized in {"mpeg", "mpga"}:
+        normalized = "mp3"
+
+    if normalized not in {"mp3", "wav"}:
+        raise ValueError("audio_format은 mp3 또는 wav만 지원합니다.")
+
+    return normalized
 
 
 def _detect_and_persist(log_id: int, top_k: int = 5) -> dict:
@@ -395,6 +591,50 @@ def _build_client_analysis_response(log_id: int, message: dict, detection: dict)
         "risk_score": detection["risk_score"],
         "risk_level": detection["risk_level"],
         "phishing_type": detection["phishing_type"],
+        "matched_patterns": detection["matched_patterns"],
+        "core_evidence": detection["core_evidence"],
+        "notification": detection["notification"],
+    }
+
+
+def _build_client_audio_analysis_response(
+    log_id: int,
+    chunk_index: int,
+    saved_messages: list[dict],
+    segments: list[dict],
+    detection: dict,
+) -> dict:
+    """실시간 오디오 chunk 전사/분석 결과를 클라이언트 응답 형태로 만든다."""
+    base_response = {
+        "log_id": log_id,
+        "chunk_index": chunk_index,
+        "message_ids": [message["id"] for message in saved_messages],
+        "transcripts": [
+            {
+                "message_id": message["id"],
+                "turn_index": message["turn_index"],
+                "role": message["role"],
+                "content": message["content"],
+                "start_time": segment["start_time"],
+                "end_time": segment["end_time"],
+            }
+            for message, segment in zip(saved_messages, segments)
+        ],
+        "is_phishing": detection["is_phishing"],
+        "risk_score": detection["risk_score"],
+        "risk_level": detection["risk_level"],
+        "phishing_type": detection["phishing_type"],
+    }
+
+    if not detection["is_phishing"]:
+        return {
+            "type": "audio_analysis_ack",
+            **base_response,
+        }
+
+    return {
+        "type": "audio_phishing_detected",
+        **base_response,
         "matched_patterns": detection["matched_patterns"],
         "core_evidence": detection["core_evidence"],
         "notification": detection["notification"],
