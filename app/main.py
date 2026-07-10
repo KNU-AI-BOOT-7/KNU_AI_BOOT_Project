@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import tempfile
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -291,6 +292,14 @@ def _detect_and_persist(log_id: int, top_k: int = 5) -> dict:
     """
     call_text = build_call_text(log_id)
     koelectra_score = _score_with_koelectra(log_id)
+    if koelectra_score is not None:
+        preliminary_patterns = detector.rule_detector.find(call_text)
+        koelectra_score = _calibrate_koelectra_score(
+            text=call_text,
+            raw_score=koelectra_score,
+            matched_patterns=preliminary_patterns,
+        )
+
     detection = detector.detect(
         text=call_text,
         top_k=top_k,
@@ -415,3 +424,62 @@ def _log_koelectra_missing() -> None:
         "학습 후 모델을 생성하세요. model_dir=%s",
         MODEL_DIR,
     )
+
+
+def _calibrate_koelectra_score(text: str, raw_score: float, matched_patterns: list[str]) -> float:
+    """
+    KoELECTRA가 정상 금융상담을 피싱으로 과탐지하는 경우를 보정한다.
+
+    예: "비밀번호나 인증번호를 요구하지 않습니다"처럼 위험 키워드가 들어 있지만
+    실제 의미는 안전 안내인 문장은 모델 점수를 낮춘다.
+    """
+    if raw_score < TH_WARNING:
+        return raw_score
+
+    if _has_strong_phishing_context(matched_patterns):
+        return raw_score
+
+    if not _has_normal_finance_context(text):
+        return raw_score
+
+    logger.info(
+        "정상 금융상담 문맥으로 KoELECTRA 점수를 보정합니다. raw_score=%.4f calibrated_score=0.4200",
+        raw_score,
+    )
+    return min(raw_score, 0.42)
+
+
+def _has_strong_phishing_context(matched_patterns: list[str]) -> bool:
+    """명확한 피싱 조합이면 정상 상담 보정을 적용하지 않는다."""
+    matched = set(matched_patterns)
+
+    if "수사기관/공공기관 사칭" in matched and (
+        "범죄 연루 압박" in matched or "금전 이체 유도" in matched
+    ):
+        return True
+
+    if "대출 사칭/상환금 요구" in matched and "금전 이체 유도" in matched:
+        return True
+
+    if "개인정보/인증 요구" in matched and "앱 설치/원격제어 유도" in matched:
+        return True
+
+    if "금전 이체 유도" in matched and "긴급성/비밀 유지 압박" in matched:
+        return True
+
+    return False
+
+
+def _has_normal_finance_context(text: str) -> bool:
+    """정상 계좌 개설/상담에서 자주 나오는 안전 문맥을 찾는다."""
+    safe_patterns = [
+        r"계좌\s*개설.*문의",
+        r"비대면\s*계좌\s*개설",
+        r"본인인증\s*후\s*진행",
+        r"신분증만\s*준비",
+        r"앱에서도\s*확인",
+        r"공식\s*앱",
+        r"상담원.*(비밀번호|인증번호).*요구하지",
+        r"(비밀번호|인증번호).*요구하지",
+    ]
+    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in safe_patterns)
