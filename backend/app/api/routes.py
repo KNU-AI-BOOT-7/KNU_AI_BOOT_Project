@@ -83,7 +83,6 @@ def get_training_cases(limit: int = 100) -> list[TrainingCase]:
     return list_training_cases(limit=limit)
 
 
-@router.post("/calls/analyze")
 @router.post("/calls/analyze-audio")
 async def analyze_call_audio(
     file: UploadFile = File(...),

@@ -23,7 +23,7 @@ def transcribe_audio_file(audio_path: str) -> list[dict]:
 
 
 def transcribe_audio_bytes(audio_bytes: bytes, audio_format: str) -> list[dict]:
-    """메모리로 받은 mp3/wav chunk를 임시 파일로 저장한 뒤 전사한다."""
+    """메모리로 받은 mp3/wav/m4a chunk를 임시 파일로 저장한 뒤 전사한다."""
     suffix = f".{normalize_audio_format(audio_format)}"
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     try:
@@ -68,12 +68,14 @@ def decode_audio_chunk_payload(payload: dict) -> bytes:
 
 
 def normalize_audio_format(audio_format: str) -> str:
-    """프론트에서 넘긴 오디오 포맷명을 mp3 또는 wav로 정규화한다."""
+    """프론트에서 넘긴 오디오 포맷명을 mp3, wav, m4a로 정규화한다."""
     normalized = audio_format.lower().strip().lstrip(".")
     if normalized in {"mpeg", "mpga"}:
         normalized = "mp3"
+    if normalized in {"mp4", "aac"}:
+        normalized = "m4a"
 
-    if normalized not in {"mp3", "wav"}:
-        raise ValueError("audio_format은 mp3 또는 wav만 지원합니다.")
+    if normalized not in {"mp3", "wav", "m4a"}:
+        raise ValueError("audio_format은 mp3, wav, m4a만 지원합니다.")
 
     return normalized
