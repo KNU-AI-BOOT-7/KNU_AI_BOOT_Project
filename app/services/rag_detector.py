@@ -29,6 +29,8 @@ class RuleSignalDetector:
     PATTERNS: dict[str, list[str]] = {
         "수사기관/공공기관 사칭": [
             r"검찰",
+            r"지검",
+            r"지청",
             r"경찰",
             r"금융감독원",
             r"금감원",
