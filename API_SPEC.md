@@ -150,13 +150,13 @@ curl "http://127.0.0.1:8000/calls/10"
 ## 6. 녹음 파일 분석
 
 ```http
-POST /calls/analyze-audio
+POST /calls/analyze
 ```
 
 요청:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
+curl -X POST "http://127.0.0.1:8000/calls/analyze?device_id=1" \
   -F "file=@call.m4a"
 ```
 
@@ -186,7 +186,7 @@ curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
 }
 ```
 
-녹음 파일 분석은 `mp3`, `wav`, `m4a` 업로드를 지원합니다. `m4a`는 서버에서 임시 `wav`로 변환한 뒤 `backend.app.mp3_json` 전사 모듈에 전달합니다.
+녹음 파일 분석은 `mp3`, `wav`, `m4a` 업로드를 지원합니다. `m4a`는 서버에서 임시 `wav`로 변환한 뒤 `backend.app.mp3_json` 전사 모듈에 전달합니다. 기존 `/calls/analyze-audio`도 같은 로직으로 동작합니다.
 
 ## 7. 실시간 통화 분석
 

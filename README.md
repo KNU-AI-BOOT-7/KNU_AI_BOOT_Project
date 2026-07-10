@@ -352,7 +352,8 @@ ws://127.0.0.1:8000/ws/calls/analyze
 | GET | `/training-cases` | 저장된 학습 사례 조회 |
 | GET | `/calls` | 통화 기록 목록 및 위험 등급별 개수 조회 |
 | GET | `/calls/{log_id}` | 통화 기록 상세 조회 |
-| POST | `/calls/analyze-audio` | 녹음 파일 업로드 분석 |
+| POST | `/calls/analyze` | 녹음 파일 업로드 분석 |
+| POST | `/calls/analyze-audio` | 녹음 파일 업로드 분석 호환 엔드포인트 |
 | WS | `/ws/calls/analyze` | 실시간 오디오 chunk 분석 |
 
 자세한 요청/응답 예시는 `API_SPEC.md`를 참고합니다.
