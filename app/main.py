@@ -23,10 +23,28 @@ if load_dotenv:
     load_dotenv()
 
 
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8080",
+    "http://localhost:8081",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:8081",
+]
+
+
 def _get_cors_origins() -> list[str]:
-    """CORS를 허용할 프론트엔드 origin 목록을 환경변수에서 읽는다."""
+    """CORS를 허용할 프론트엔드 origin 목록을 기본값과 환경변수에서 읽는다."""
     raw_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
-    return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    env_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return list(dict.fromkeys(DEFAULT_CORS_ORIGINS + env_origins))
+
+
+def _get_cors_allow_credentials(cors_origins: list[str]) -> bool:
+    """와일드카드 Origin을 쓰는 경우에는 브라우저 규칙상 credentials를 끈다."""
+    return "*" not in cors_origins
 
 
 @asynccontextmanager
@@ -43,10 +61,11 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+cors_origins = _get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_get_cors_origins(),
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=_get_cors_allow_credentials(cors_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
