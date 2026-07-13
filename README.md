@@ -124,4 +124,4 @@ http://127.0.0.1:8000/docs
 | POST | `/training-cases/import-json` | RAG/학습 사례 업로드 |
 | GET | `/training-cases` | 저장된 학습 사례 조회 |
 
-상세 요청/응답은 [API_SPEC.md](API_SPEC.md)를 참고합니다.
+상세 요청/응답은 [API_SPEC.md](docs/API_SPEC.md)를 참고합니다.
