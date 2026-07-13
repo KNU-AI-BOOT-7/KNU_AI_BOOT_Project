@@ -54,6 +54,11 @@ def normalize_transcribed_segments(raw_segments: list[dict]) -> list[dict]:
     return normalized_segments
 
 
+def join_transcript_texts(texts: list[str]) -> str:
+    """녹음 파일 전체 전사 결과를 화면 표시용 한 문단으로 합친다."""
+    return " ".join(text.strip() for text in texts if text and text.strip())
+
+
 def decode_audio_chunk_payload(payload: dict) -> bytes:
     """base64 JSON 방식으로 전달된 오디오 chunk를 디코딩한다."""
     encoded_audio = str(payload.get("audio_base64", "")).strip()

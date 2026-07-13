@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from backend.app.api.response_logger import log_api_request, log_api_response
-from backend.app.repository import create_call_log, get_call_log, insert_call_message
+from backend.app.repository import create_call_log, get_call_log, insert_call_message, list_call_messages
 from backend.app.schemas import CallLogCreate, CallMessageCreate
 from backend.app.services import audio_transcriber, call_analyzer
 
@@ -24,7 +24,7 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
     """
     클라이언트가 3~4초 단위로 보내는 통화 음성 chunk를 받아 실시간 분석을 수행한다.
 
-    start 이후 m4a 바이너리 chunk를 그대로 받고 서버 전사 결과를 발화 내용으로 저장한다.
+    start는 통화 로그만 생성한다. 이후 오디오 chunk를 전사한 뒤 전사된 문장을 저장한다.
     mp3/wav도 테스트/호환 목적으로 지원하며, 기존 JSON 텍스트 메시지도 유지한다.
     """
     await websocket.accept()
@@ -245,8 +245,10 @@ async def _handle_audio_chunk(
         }
 
     segments = audio_transcriber.normalize_transcribed_segments(raw_segments)
+    segments, skipped_duplicate_count = _filter_duplicate_segments(log_id, segments)
     saved_messages = []
     for segment in segments:
+        # 전사가 성공한 segment만 call_messages에 저장한다.
         saved_messages.append(
             insert_call_message(
                 log_id=log_id,
@@ -264,18 +266,21 @@ async def _handle_audio_chunk(
             "message_count": 0,
             "converted_text": "",
             "transcripts": [],
+            "skipped_duplicate_count": skipped_duplicate_count,
             **_current_risk_fields(log_id),
-            "message": "전사된 발화가 없습니다.",
+            "message": "전사된 발화가 없습니다." if skipped_duplicate_count == 0 else "중복 전사로 판단되어 저장하지 않았습니다.",
         }
 
     detection = await asyncio.to_thread(call_analyzer.detect_and_persist, log_id=log_id)
-    return call_analyzer.build_client_audio_analysis_response(
+    response = call_analyzer.build_client_audio_analysis_response(
         log_id=log_id,
         chunk_index=chunk_index,
         saved_messages=[message.model_dump() for message in saved_messages],
         segments=segments,
         detection=detection,
     )
+    response["skipped_duplicate_count"] = skipped_duplicate_count
+    return response
 
 
 def _parse_ws_json(raw_text: str) -> dict:
@@ -302,3 +307,35 @@ def _current_risk_fields(log_id: int) -> dict:
         "risk_score": round(call.risk_score, 4),
         "risk_level": call.risk_level,
     }
+
+
+def _filter_duplicate_segments(log_id: int, segments: list[dict]) -> tuple[list[dict], int]:
+    """최근 저장된 긴 전사 문장이 반복되면 저장 대상에서 제외한다."""
+    if not segments:
+        return [], 0
+
+    recent_messages = list_call_messages(log_id)[-120:]
+    recent_texts = {_normalize_duplicate_key(message.content) for message in recent_messages}
+    kept_segments = []
+    skipped_count = 0
+
+    for segment in segments:
+        text = str(segment.get("text", ""))
+        duplicate_key = _normalize_duplicate_key(text)
+        if duplicate_key and duplicate_key in recent_texts:
+            skipped_count += 1
+            continue
+
+        kept_segments.append(segment)
+        if duplicate_key:
+            recent_texts.add(duplicate_key)
+
+    return kept_segments, skipped_count
+
+
+def _normalize_duplicate_key(text: str) -> str:
+    """짧은 맞장구는 제외하고, 의미 있는 길이의 반복 문장만 중복 키로 사용한다."""
+    normalized = " ".join(text.split()).strip()
+    if len(normalized) < 8:
+        return ""
+    return normalized

@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from backend.app.api.response_logger import log_api_response
+from backend.app.api.response_logger import log_api_request, log_api_response
 from backend.app.repository import (
     create_call_log,
     get_call_conversation_response,
@@ -42,9 +42,9 @@ def health() -> dict[str, str]:
 
 
 @router.get("/calls", response_model=CallLogListResponse)
-def get_calls(limit: int = 100) -> CallLogListResponse:
+def get_calls(limit: int = 100, device_id: Optional[int] = None) -> CallLogListResponse:
     """통화 기록 목록과 리스크 레벨별 개수를 반환한다."""
-    response = get_call_log_list_response(limit=limit)
+    response = get_call_log_list_response(limit=limit, device_id=device_id)
     return log_api_response("GET /calls", response)
 
 
@@ -117,15 +117,43 @@ async def analyze_call_audio(
         raise HTTPException(status_code=400, detail="mp3, wav, m4a 파일만 업로드할 수 있습니다.")
 
     raw_bytes = await file.read()
+    log_api_request(
+        "POST /calls/analyze-audio",
+        {
+            "file_name": file.filename,
+            "device_id": device_id,
+            "top_k": top_k,
+            "audio_format": suffix.lstrip("."),
+            "byte_size": len(raw_bytes),
+        },
+    )
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     try:
         tmp.write(raw_bytes)
         tmp.close()
         try:
             raw_segments = await asyncio.to_thread(audio_transcriber.transcribe_audio_file, tmp.name)
-        except HTTPException:
+        except HTTPException as exc:
+            log_api_response(
+                "POST /calls/analyze-audio",
+                {
+                    "type": "audio_analysis_error",
+                    "status_code": exc.status_code,
+                    "file_name": file.filename,
+                    "message": exc.detail,
+                },
+            )
             raise
         except Exception as exc:
+            log_api_response(
+                "POST /calls/analyze-audio",
+                {
+                    "type": "audio_analysis_error",
+                    "status_code": 422,
+                    "file_name": file.filename,
+                    "message": f"오디오 파일을 전사하지 못했습니다: {exc}",
+                },
+            )
             raise HTTPException(
                 status_code=422,
                 detail=f"오디오 파일을 전사하지 못했습니다: {exc}",
@@ -135,6 +163,16 @@ async def analyze_call_audio(
 
     segments = audio_transcriber.normalize_transcribed_segments(raw_segments)
     if not segments:
+        log_api_response(
+            "POST /calls/analyze-audio",
+            {
+                "type": "audio_analysis_error",
+                "status_code": 422,
+                "file_name": file.filename,
+                "raw_segment_count": len(raw_segments or []),
+                "message": "오디오에서 발화를 전사하지 못했습니다.",
+            },
+        )
         raise HTTPException(status_code=422, detail="오디오에서 발화를 전사하지 못했습니다.")
 
     call = create_call_log(
@@ -157,12 +195,25 @@ async def analyze_call_audio(
         )
 
     detection = await asyncio.to_thread(call_analyzer.detect_and_persist, log_id=call.id, top_k=top_k)
-    converted_text = "\n".join(message.content for message in saved_messages)
+    converted_text = audio_transcriber.join_transcript_texts(
+        [message.content for message in saved_messages]
+    )
+    log_api_request(
+        "POST /calls/analyze-audio",
+        {
+            "log_id": call.id,
+            "message_count": len(saved_messages),
+            "message_id_first": saved_messages[0].id if saved_messages else None,
+            "message_id_last": saved_messages[-1].id if saved_messages else None,
+            "converted_text": converted_text,
+        },
+    )
 
     response = {
         "type": "audio_analysis",
         "log_id": call.id,
         "file_name": file.filename,
+        "message_count": len(saved_messages),
         "message_ids": [message.id for message in saved_messages],
         "converted_text": converted_text,
         "transcripts": [

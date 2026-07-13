@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import hashlib
 from typing import Any
 
 
@@ -68,5 +69,12 @@ def _summarize_large_value(key: Any, value: Any) -> Any:
 
     if isinstance(value, bytes):
         return f"<bytes length={len(value)}>"
+
+    if isinstance(value, str) and len(value) > 300:
+        return {
+            "length": len(value),
+            "sha256": hashlib.sha256(value.encode("utf-8")).hexdigest()[:16],
+            "preview": value[:300],
+        }
 
     return _to_loggable(value)

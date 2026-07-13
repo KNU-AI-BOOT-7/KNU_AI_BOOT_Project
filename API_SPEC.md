@@ -71,13 +71,13 @@ GET /training-cases
 ## 4. 통화 기록 목록 조회
 
 ```http
-GET /calls
+GET /calls?device_id={device_id}
 ```
 
 요청:
 
 ```bash
-curl "http://127.0.0.1:8000/calls?limit=20"
+curl "http://127.0.0.1:8000/calls?device_id=1&limit=20"
 ```
 
 응답:
@@ -114,7 +114,7 @@ curl "http://127.0.0.1:8000/calls?limit=20"
 
 | 필드 | 설명 |
 | --- | --- |
-| `risk_level_counts` | 전체 통화 기록의 리스크 레벨별 개수 |
+| `risk_level_counts` | 조회 대상 기기의 통화 기록 리스크 레벨별 개수 |
 | `calls` | 통화 기록 목록 |
 | `id` | 통화 로그 ID |
 | `called_at` | 통화 기록 생성 일시 |

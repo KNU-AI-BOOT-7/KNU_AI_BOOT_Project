@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Optional
 
 from backend.app.database import get_connection
 from backend.app.schemas import (
@@ -312,25 +312,30 @@ def list_call_logs(limit: int = 100) -> list[CallLog]:
     return [CallLog(**dict(row)) for row in rows]
 
 
-def get_call_log_list_response(limit: int = 100) -> CallLogListResponse:
+def get_call_log_list_response(limit: int = 100, device_id: Optional[int] = None) -> CallLogListResponse:
     """통화 기록 목록 화면에 필요한 요약 정보와 리스크 카운트를 조회한다."""
     with get_connection() as connection:
+        where_clause = "WHERE device_id = ?" if device_id is not None else ""
+        params = (device_id,) if device_id is not None else ()
         count_rows = connection.execute(
-            """
+            f"""
             SELECT risk_level, COUNT(*) AS count
             FROM call_logs
+            {where_clause}
             GROUP BY risk_level
-            """
+            """,
+            params,
         ).fetchall()
         rows = connection.execute(
-            """
+            f"""
             SELECT id, created_at, risk_score, risk_level, detected_label,
                    status, phishing_type, file_type
             FROM call_logs
+            {where_clause}
             ORDER BY id DESC
             LIMIT ?
             """,
-            (limit,),
+            (*params, limit),
         ).fetchall()
 
     counts = {"low": 0, "medium": 0, "high": 0}
