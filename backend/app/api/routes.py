@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
+from backend.app.api.response_logger import log_api_response
 from backend.app.repository import (
     create_call_log,
     get_call_conversation_response,
@@ -37,20 +38,22 @@ router = APIRouter()
 @router.get("/health")
 def health() -> dict[str, str]:
     """서버 상태 확인 엔드포인트."""
-    return {"status": "ok"}
+    return log_api_response("GET /health", {"status": "ok"})
 
 
 @router.get("/calls", response_model=CallLogListResponse)
 def get_calls(limit: int = 100) -> CallLogListResponse:
     """통화 기록 목록과 리스크 레벨별 개수를 반환한다."""
-    return get_call_log_list_response(limit=limit)
+    response = get_call_log_list_response(limit=limit)
+    return log_api_response("GET /calls", response)
 
 
 @router.get("/calls/{log_id}", response_model=CallLogDetail)
 def get_call_detail(log_id: int) -> CallLogDetail:
     """단일 통화 기록의 피싱 유형, 주요 키워드, 근거를 반환한다."""
     try:
-        return get_call_log_detail_response(log_id=log_id)
+        response = get_call_log_detail_response(log_id=log_id)
+        return log_api_response("GET /calls/{log_id}", response)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -59,7 +62,8 @@ def get_call_detail(log_id: int) -> CallLogDetail:
 def get_call_messages(log_id: int) -> CallConversationResponse:
     """단일 통화 기록에 저장된 대화 내역을 반환한다."""
     try:
-        return get_call_conversation_response(log_id=log_id)
+        response = get_call_conversation_response(log_id=log_id)
+        return log_api_response("GET /calls/{log_id}/messages", response)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -85,13 +89,15 @@ async def import_training_cases_json(file: UploadFile = File(...)) -> ImportResu
     inserted_count = insert_training_cases(cases)
     if inserted_count > 0:
         call_analyzer.clear_detector_index()
-    return ImportResult(inserted_count=inserted_count, skipped_count=skipped_count)
+    response = ImportResult(inserted_count=inserted_count, skipped_count=skipped_count)
+    return log_api_response("POST /training-cases/import-json", response)
 
 
 @router.get("/training-cases", response_model=list[TrainingCase])
 def get_training_cases(limit: int = 100) -> list[TrainingCase]:
     """최근 저장된 학습 사례를 반환한다."""
-    return list_training_cases(limit=limit)
+    response = list_training_cases(limit=limit)
+    return log_api_response("GET /training-cases", response)
 
 
 @router.post("/calls/analyze-audio")
@@ -153,7 +159,7 @@ async def analyze_call_audio(
     detection = await asyncio.to_thread(call_analyzer.detect_and_persist, log_id=call.id, top_k=top_k)
     converted_text = "\n".join(message.content for message in saved_messages)
 
-    return {
+    response = {
         "type": "audio_analysis",
         "log_id": call.id,
         "file_name": file.filename,
@@ -177,3 +183,4 @@ async def analyze_call_audio(
         "core_evidence": detection["core_evidence"],
         "notification": detection["notification"],
     }
+    return log_api_response("POST /calls/analyze-audio", response)

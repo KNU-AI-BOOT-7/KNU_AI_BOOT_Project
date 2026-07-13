@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
+from backend.app.api.response_logger import log_api_request, log_api_response
 from backend.app.repository import create_call_log, get_call_log, insert_call_message
 from backend.app.schemas import CallLogCreate, CallMessageCreate
 from backend.app.services import audio_transcriber, call_analyzer
@@ -38,6 +39,17 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
                 return
 
             if packet.get("bytes") is not None:
+                incoming_chunk_index = chunk_index + 1 if log_id is not None else None
+                log_api_request(
+                    "WS /ws/calls/analyze",
+                    {
+                        "frame": "bytes",
+                        "log_id": log_id,
+                        "chunk_index": incoming_chunk_index,
+                        "audio_format": audio_format,
+                        "byte_size": len(packet["bytes"] or b""),
+                    },
+                )
                 if log_id is None:
                     if not await _send_json(
                         websocket,
@@ -61,12 +73,28 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
                 continue
 
             if packet.get("text") is None:
+                log_api_request(
+                    "WS /ws/calls/analyze",
+                    {
+                        "frame": str(packet.get("type", "unknown")),
+                        "log_id": log_id,
+                    },
+                )
                 if not await _send_json(websocket, {"type": "error", "message": "지원하지 않는 WebSocket 메시지입니다."}):
                     return
                 continue
 
             payload = _parse_ws_json(packet["text"])
             event_type = payload.get("type", "message")
+            log_api_request(
+                "WS /ws/calls/analyze",
+                {
+                    "frame": "text",
+                    "log_id": log_id,
+                    "event_type": event_type,
+                    "payload": payload,
+                },
+            )
 
             if event_type == "start":
                 audio_format = audio_transcriber.normalize_audio_format(str(payload.get("audio_format", audio_format)))
@@ -161,6 +189,7 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
 async def _send_json(websocket: WebSocket, payload: dict) -> bool:
     """닫혔거나 닫히는 중인 WebSocket에는 응답을 보내지 않는다."""
     try:
+        log_api_response("WS /ws/calls/analyze", payload)
         await websocket.send_json(payload)
         return True
     except (RuntimeError, WebSocketDisconnect):
@@ -188,6 +217,7 @@ async def _handle_audio_chunk(
             "type": "audio_chunk_error",
             "log_id": log_id,
             "chunk_index": chunk_index,
+            "message_count": 0,
             **_current_risk_fields(log_id),
             "message": "빈 오디오 chunk입니다.",
         }
@@ -199,6 +229,7 @@ async def _handle_audio_chunk(
             "type": "audio_chunk_error",
             "log_id": log_id,
             "chunk_index": chunk_index,
+            "message_count": 0,
             **_current_risk_fields(log_id),
             "message": exc.detail,
         }
@@ -208,6 +239,7 @@ async def _handle_audio_chunk(
             "type": "audio_chunk_error",
             "log_id": log_id,
             "chunk_index": chunk_index,
+            "message_count": 0,
             **_current_risk_fields(log_id),
             "message": f"오디오 chunk 전사에 실패했습니다: {exc}",
         }
@@ -229,6 +261,7 @@ async def _handle_audio_chunk(
             "type": "audio_chunk_ack",
             "log_id": log_id,
             "chunk_index": chunk_index,
+            "message_count": 0,
             "converted_text": "",
             "transcripts": [],
             **_current_risk_fields(log_id),

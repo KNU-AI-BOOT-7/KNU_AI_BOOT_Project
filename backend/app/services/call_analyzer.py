@@ -156,6 +156,7 @@ def build_client_audio_analysis_response(
     base_response = {
         "log_id": log_id,
         "chunk_index": chunk_index,
+        "message_count": len(saved_messages),
         "message_ids": [message["id"] for message in saved_messages],
         "converted_text": converted_text,
         "transcripts": [
