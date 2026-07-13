@@ -21,6 +21,8 @@ export interface AudioCaptureService {
   stop(): void;
   /** 아직 청크 길이(3초)를 못 채운 마지막 버퍼를 즉시 한 청크로 내보낸다(종료 시 마지막 발화 누락 방지). */
   flushFinal(): void;
+  /** 세션 전체 녹음을 하나의 WAV Blob으로 반환한다(종료 시 전체 재전사용). 캡처가 없으면 null. */
+  getSessionWav(): Blob | null;
   onChunk(cb: (c: AudioChunk) => void): void;
   onError(cb: (msg: string) => void): void;
 }
@@ -30,6 +32,9 @@ export function createAudioCapture(): AudioCaptureService {
     async start() {},
     stop() {},
     flushFinal() {},
+    getSessionWav() {
+      return null;
+    },
     onChunk() {},
     onError(cb) {
       cb('실시간 오디오 캡처는 웹에서만 지원됩니다.');

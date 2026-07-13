@@ -28,3 +28,12 @@ export async function analyzeAudioFile(file: PickedAudio): Promise<AudioAnalysis
   });
   return parseAnalyzeResponse(res);
 }
+
+/** 세션 전체 오디오 재전사는 웹 오디오 캡처 경로에서만 사용된다(네이티브는 온디바이스 STT). */
+export async function analyzeSessionAudio(_audio: Blob): Promise<AudioAnalysisResult> {
+  throw new Error('세션 오디오 재전사는 웹에서만 지원됩니다.');
+}
+
+export async function retranscribeSessionAudio(_logId: number, _audio: Blob): Promise<AudioAnalysisResult> {
+  throw new Error('세션 오디오 재전사는 웹에서만 지원됩니다.');
+}

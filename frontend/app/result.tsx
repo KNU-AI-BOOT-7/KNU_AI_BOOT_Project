@@ -325,14 +325,9 @@ function ChatTab({ turns }: { turns: TranscriptTurn[] }) {
                 borderTopLeftRadius: isRight ? 14 : 4,
               }}
             >
-              <HighlightedText
-                text={t.content}
-                keywords={t.keywords ?? []}
-                baseColor={colors.text}
-                highlightColor={colors.primary}
-                weightHighlight="700"
-                style={{ fontSize: 14, lineHeight: 21 }}
-              />
+              <AppText color={colors.text} style={{ fontSize: 14, lineHeight: 21 }}>
+                {t.content}
+              </AppText>
             </View>
           </View>
         );

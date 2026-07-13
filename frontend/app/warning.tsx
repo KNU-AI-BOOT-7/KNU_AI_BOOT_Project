@@ -1,5 +1,4 @@
-import { Pressable, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AppText } from '@/components/AppText';
@@ -29,80 +28,103 @@ export default function Warning() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: RED }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        justifyContent: 'center',
+        paddingHorizontal: 20,
+      }}
+    >
       <StatusBar style="light" />
-      <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, paddingHorizontal: 24 }}>
-        <View style={{ flex: 1, alignItems: 'center', paddingTop: 20 }}>
-          <View
-            style={{
-              width: 96,
-              height: 96,
-              borderRadius: 48,
-              backgroundColor: 'rgba(255,255,255,0.16)',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginTop: 8,
-            }}
-          >
-            <Icon name="alert-triangle" size={48} color="#FFFFFF" />
-          </View>
-          <AppText weight="800" color="#FFFFFF" style={{ fontSize: 31, lineHeight: 40, textAlign: 'center', marginTop: 22 }}>
-            보이스피싱{'\n'}위험 감지!
+      {/* 배경(뒤 화면 비침) 탭 시 닫기 */}
+      <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="경고 닫기" />
+
+      {/* 중앙 팝업 카드 */}
+      <View
+        style={{
+          width: '100%',
+          backgroundColor: RED,
+          borderRadius: 28,
+          paddingHorizontal: 22,
+          paddingTop: 26,
+          paddingBottom: 18,
+          alignItems: 'center',
+          shadowColor: '#000',
+          shadowOpacity: 0.4,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: 12 },
+          elevation: 12,
+        }}
+      >
+        <View
+          style={{
+            width: 74,
+            height: 74,
+            borderRadius: 37,
+            backgroundColor: 'rgba(255,255,255,0.16)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Icon name="alert-triangle" size={38} color="#FFFFFF" />
+        </View>
+        <AppText weight="800" color="#FFFFFF" style={{ fontSize: 26, lineHeight: 34, textAlign: 'center', marginTop: 16 }}>
+          보이스피싱{'\n'}위험 감지!
+        </AppText>
+        <View
+          style={{
+            marginTop: 14,
+            backgroundColor: 'rgba(0,0,0,0.24)',
+            paddingHorizontal: 20,
+            paddingVertical: 9,
+            borderRadius: 22,
+          }}
+        >
+          <AppText weight="700" color="#FFFFFF" style={{ fontSize: 14 }}>
+            위험도 {toPercent(score)}% · 강한 경고
           </AppText>
-          <View
-            style={{
-              marginTop: 20,
-              backgroundColor: 'rgba(0,0,0,0.24)',
-              paddingHorizontal: 20,
-              paddingVertical: 9,
-              borderRadius: 22,
-            }}
-          >
-            <AppText weight="700" color="#FFFFFF" style={{ fontSize: 14 }}>
-              위험도 {toPercent(score)}% · 강한 경고
-            </AppText>
-          </View>
+        </View>
 
-          <View
-            style={{
-              width: '100%',
-              backgroundColor: 'rgba(255,255,255,0.14)',
-              borderRadius: 16,
-              padding: 18,
-              marginTop: 26,
-            }}
-          >
-            <AppText weight="800" color="#FFFFFF" style={{ fontSize: 15, marginBottom: 13 }}>
-              탐지 근거
-            </AppText>
-            <View style={{ gap: 12 }}>
-              {bullets.map((b, i) => (
-                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-                  <Icon name="check-circle" size={18} color="#FFFFFF" />
-                  <AppText weight="600" color="#FFFFFF" style={{ fontSize: 14, flex: 1 }}>
-                    {b}
-                  </AppText>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 18 }}>
-            <View style={{ marginTop: 1 }}>
-              <Icon name="volume" size={18} color="#FFFFFF" />
-            </View>
-            <AppText weight="600" color="#FFFFFF" style={{ fontSize: 13, lineHeight: 20, flex: 1 }}>
-              {advice}
-            </AppText>
+        <View
+          style={{
+            width: '100%',
+            backgroundColor: 'rgba(255,255,255,0.14)',
+            borderRadius: 16,
+            padding: 16,
+            marginTop: 20,
+          }}
+        >
+          <AppText weight="800" color="#FFFFFF" style={{ fontSize: 15, marginBottom: 12 }}>
+            탐지 근거
+          </AppText>
+          <View style={{ gap: 11 }}>
+            {bullets.map((b, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+                <Icon name="check-circle" size={18} color="#FFFFFF" />
+                <AppText weight="600" color="#FFFFFF" style={{ fontSize: 14, flex: 1 }}>
+                  {b}
+                </AppText>
+              </View>
+            ))}
           </View>
         </View>
 
-        <View style={{ gap: 11, paddingBottom: 6 }}>
-          <Button title="대처 방법" variant="white" textColor={RED} onPress={goResponse} style={{ minHeight: 54 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 14 }}>
+          <View style={{ marginTop: 1 }}>
+            <Icon name="volume" size={18} color="#FFFFFF" />
+          </View>
+          <AppText weight="600" color="#FFFFFF" style={{ fontSize: 13, lineHeight: 20, flex: 1 }}>
+            {advice}
+          </AppText>
+        </View>
+
+        <View style={{ width: '100%', gap: 10, marginTop: 22 }}>
+          <Button title="대처 방법" variant="white" textColor={RED} onPress={goResponse} style={{ minHeight: 52 }} />
           <Pressable
             onPress={close}
             style={{
-              minHeight: 52,
+              minHeight: 50,
               borderRadius: 15,
               borderWidth: 1.5,
               borderColor: 'rgba(255,255,255,0.7)',
@@ -115,7 +137,7 @@ export default function Warning() {
             </AppText>
           </Pressable>
         </View>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }

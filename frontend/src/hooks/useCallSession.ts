@@ -6,6 +6,7 @@ import type { AnalysisEvent, CallResult, TranscriptTurn } from '@/data/models/ty
 import type { Scenario } from '@/data/mock/mockScenarios';
 import { createSttService, type SttService } from '@/data/services/sttService';
 import { createAudioCapture, type AudioCaptureService } from '@/data/services/audioCapture';
+import { analyzeSessionAudio, retranscribeSessionAudio } from '@/data/services/uploadAudio';
 import { createAnalyzeConnection, type AnalyzeConnection } from '@/data/services/wsService';
 import { useSettingsStore } from '@/state/settingsStore';
 
@@ -89,11 +90,10 @@ export function useCallSession(
         setState((prev) => ({ ...prev, logId: e.call.id }));
         return;
       }
-      // 오디오 청크 응답: 백엔드가 3초 청크마다 "그 청크만" 독립 전사해 조각으로 내려준다.
-      // 백엔드는 화자분리를 하지 않아 모든 조각의 role이 항상 'unknown'으로 동일하다.
-      // (예전엔 "같은 role → 이어붙이기"였지만, role이 늘 같으니 대화 전체가 한 말풍선으로
-      // 뭉쳐버리는 버그가 됐다.) 전사 모델이 이미 문장 단위로 끊어 내려주므로, 조각마다
-      // 새 말풍선을 만든다.
+      // 오디오 청크 응답: 백엔드가 무음 경계 청크마다 "그 청크만" 독립 전사해 조각으로 내려준다.
+      // 백엔드가 발화별 화자(화자A/화자B)를 라벨링하므로, 같은 화자의 연속 조각은 한 말풍선으로
+      // 이어붙이고 화자가 바뀌면 새 말풍선을 만든다. (한 사람 말이 무음마다 여러 청크로 끊겨 와도
+      // 자연스러운 대화 흐름으로 복원된다.)
       if (e.type === 'audio_analysis_ack' || e.type === 'audio_phishing_detected') {
         const score = e.risk_score;
         maxScore.current = Math.max(maxScore.current, score);
@@ -111,16 +111,29 @@ export function useCallSession(
           const level = riskLevelFromScore(score, dangerThreshold);
           const turns: TranscriptTurn[] = [...prev.turns];
           for (const inc of incoming) {
-            turnCounter.current += 1;
-            turns.push({
-              turnIndex: turnCounter.current,
-              role: inc.role,
-              isMine: false,
-              content: inc.content,
-              atSec: inc.atSec,
-              riskScore: score,
-              keywords: extractKeywords(inc.content, 4),
-            });
+            const last = turns[turns.length - 1];
+            // 같은 화자(role)의 연속 발화는 한 말풍선으로 이어붙인다. 화자가 바뀌거나
+            // 화자 미상(unknown)이면 새 말풍선을 만든다.
+            if (last && last.role === inc.role && inc.role !== 'unknown') {
+              const mergedContent = `${last.content} ${inc.content}`.trim();
+              turns[turns.length - 1] = {
+                ...last,
+                content: mergedContent,
+                riskScore: score,
+                keywords: extractKeywords(mergedContent, 4),
+              };
+            } else {
+              turnCounter.current += 1;
+              turns.push({
+                turnIndex: turnCounter.current,
+                role: inc.role,
+                isMine: false,
+                content: inc.content,
+                atSec: inc.atSec,
+                riskScore: score,
+                keywords: extractKeywords(inc.content, 4),
+              });
+            }
           }
           const next: CallSessionState = {
             ...prev,
@@ -278,8 +291,11 @@ export function useCallSession(
   // → 종료 시점에 아직 전사 안 된 마지막 발화까지 대화 내역에 남는다. (지연은 감수)
   const MAX_WAIT_MS = 20000; // 백엔드가 멈춰도 무한 대기하지 않도록 안전 상한
   const finish = useCallback(async (): Promise<CallSessionState> => {
-    captureRef.current?.flushFinal(); // 남은 partial 오디오를 마지막 청크로 전송(sentChunks 증가)
-    captureRef.current?.stop();
+    const capture = captureRef.current;
+    capture?.flushFinal(); // 남은 partial 오디오를 마지막 청크로 전송(sentChunks 증가)
+    // 전체 재전사용: stop() 전에 통화 전체 녹음을 확보한다.
+    const sessionWav = capture?.getSessionWav() ?? null;
+    capture?.stop();
     captureRef.current = null;
     sttRef.current?.stop();
     if (timer.current) {
@@ -287,6 +303,54 @@ export function useCallSession(
       timer.current = null;
     }
     setState((prev) => ({ ...prev, running: false }));
+
+    // ── 전체 재전사 경로 ──
+    // 실시간 청크는 조각마다 독립 전사라 화자 A/B가 청크 경계에서 틀린다("2003년"이 상대방으로,
+    // 두 화자가 한 청크에 섞이는 등). 종료 시 통화 전체를 한 번에 전사하면 모델이 전체 목소리를
+    // 비교해 화자를 정확히 가르므로, 결과 화면 대화 내역을 이 재전사 결과로 교체한다.
+    if (sessionWav) {
+      try {
+        // 실시간 세션 로그가 있으면 그 로그에 덮어써(단일 기록) 재전사하고, 없으면 새 로그를 만든다.
+        const existingLogId = latestRef.current.logId;
+        const result =
+          existingLogId > 0
+            ? await retranscribeSessionAudio(existingLogId, sessionWav)
+            : await analyzeSessionAudio(sessionWav);
+        if (result.segments.length > 0) {
+          const turns: TranscriptTurn[] = result.segments.map((seg, i) => {
+            const content = seg.text.trim();
+            return {
+              turnIndex: i + 1,
+              role: seg.speaker, // 화자A / 화자B
+              isMine: seg.speaker === '화자B', // 화자B=나(우), 화자A=상대방(좌)
+              content,
+              atSec: Math.round(seg.start),
+              riskScore: result.riskScore,
+              keywords: extractKeywords(content, 4),
+            };
+          });
+          maxScore.current = Math.max(maxScore.current, result.riskScore);
+          const corrected: CallSessionState = {
+            ...latestRef.current,
+            turns,
+            logId: result.logId,
+            score: result.riskScore,
+            level: riskLevelFromScore(result.riskScore, dangerThreshold),
+            matchedPatterns: result.matchedPatterns.length ? result.matchedPatterns : latestRef.current.matchedPatterns,
+            coreEvidence: result.coreEvidence || latestRef.current.coreEvidence,
+            running: false,
+          };
+          connRef.current?.close();
+          connRef.current = null;
+          setState(corrected);
+          return corrected;
+        }
+      } catch {
+        // 재전사 실패 → 아래 실시간 누적 turns 폴백
+      }
+    }
+
+    // ── 폴백: 재전사가 없거나(오디오 없음) 실패 → 기존처럼 청크 응답을 마저 기다린다 ──
     // 보낸 청크 수만큼 응답(전사)이 다 올 때까지 대기. 상한 초과 시 중단.
     const deadline = Date.now() + MAX_WAIT_MS;
     while (recvChunks.current < sentChunks.current && Date.now() < deadline) {
@@ -297,7 +361,8 @@ export function useCallSession(
     connRef.current?.close();
     connRef.current = null;
     return latestRef.current;
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dangerThreshold]);
 
   const buildResult = useCallback(
     (id: number): CallResult => {

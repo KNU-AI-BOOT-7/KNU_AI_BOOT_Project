@@ -12,7 +12,9 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from backend.app.api.response_logger import log_api_request, log_api_response
 from backend.app.repository import (
     create_call_log,
+    delete_call_messages,
     get_call_conversation_response,
+    get_call_log,
     get_call_log_detail_response,
     get_call_log_list_response,
     insert_call_message,
@@ -255,3 +257,110 @@ async def analyze_call_audio(
         "notification": detection["notification"],
     }
     return log_api_response("POST /calls/analyze-audio", response)
+
+
+@router.post("/calls/{log_id}/retranscribe-audio")
+async def retranscribe_call_audio(
+    request: Request,
+    log_id: int,
+    file: UploadFile = File(...),
+    top_k: int = 5,
+) -> dict:
+    """
+    기존 통화 로그의 전체 녹음을 다시 전사해 대화 내역을 교체하고 재분석한다.
+
+    실시간 청크 전사는 조각별 독립 처리라 화자 A/B가 부정확하다. 통화 종료 시 세션 전체
+    오디오를 이 엔드포인트로 보내면, 같은 log_id에 정확한 화자 구분 결과를 덮어써서
+    새 로그를 만들지 않고 하나의 기록으로 유지한다.
+    """
+    try:
+        get_call_log(log_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    suffix = os.path.splitext(file.filename or "")[1].lower()
+    if suffix not in (".mp3", ".wav", ".m4a"):
+        raise HTTPException(status_code=400, detail="mp3, wav, m4a 파일만 업로드할 수 있습니다.")
+
+    form = await request.form()
+    form_top_k = _optional_int(form.get("top_k"), "top_k")
+    if form_top_k is not None:
+        top_k = form_top_k
+
+    raw_bytes = await file.read()
+    log_api_request(
+        "POST /calls/{log_id}/retranscribe-audio",
+        {
+            "log_id": log_id,
+            "file_name": file.filename,
+            "client_host": request.client.host if request.client else None,
+            "top_k": top_k,
+            "audio_format": suffix.lstrip("."),
+            "byte_size": len(raw_bytes),
+        },
+    )
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    try:
+        tmp.write(raw_bytes)
+        tmp.close()
+        try:
+            raw_segments = await asyncio.to_thread(audio_transcriber.transcribe_audio_file, tmp.name)
+        except HTTPException as exc:
+            log_api_response(
+                "POST /calls/{log_id}/retranscribe-audio",
+                {"type": "audio_analysis_error", "status_code": exc.status_code, "log_id": log_id, "message": exc.detail},
+            )
+            raise
+        except Exception as exc:
+            log_api_response(
+                "POST /calls/{log_id}/retranscribe-audio",
+                {"type": "audio_analysis_error", "status_code": 422, "log_id": log_id, "message": f"오디오 파일을 전사하지 못했습니다: {exc}"},
+            )
+            raise HTTPException(status_code=422, detail=f"오디오 파일을 전사하지 못했습니다: {exc}") from exc
+    finally:
+        os.unlink(tmp.name)
+
+    segments = audio_transcriber.normalize_transcribed_segments(raw_segments)
+    if not segments:
+        raise HTTPException(status_code=422, detail="오디오에서 발화를 전사하지 못했습니다.")
+
+    # 기존 청크 전사 발화를 지우고 전체 재전사 결과로 교체한다.
+    delete_call_messages(log_id)
+    saved_messages = []
+    for turn_index, segment in enumerate(segments, start=1):
+        saved_messages.append(
+            insert_call_message(
+                log_id=log_id,
+                message=CallMessageCreate(content=segment["text"], turn_index=turn_index),
+            )
+        )
+
+    detection = await asyncio.to_thread(call_analyzer.detect_and_persist, log_id=log_id, top_k=top_k)
+    converted_text = audio_transcriber.join_transcript_texts([message.content for message in saved_messages])
+
+    response = {
+        "type": "audio_analysis",
+        "log_id": log_id,
+        "file_name": file.filename,
+        "message_count": len(saved_messages),
+        "message_ids": [message.id for message in saved_messages],
+        "converted_text": converted_text,
+        "transcripts": [
+            {
+                "message_id": message.id,
+                "turn_index": message.turn_index,
+                "start_time": segment["start_time"],
+                "end_time": segment["end_time"],
+            }
+            for message, segment in zip(saved_messages, segments)
+        ],
+        "segments": segments,
+        "is_phishing": detection["is_phishing"],
+        "risk_score": detection["risk_score"],
+        "risk_level": detection["risk_level"],
+        "phishing_type": detection["phishing_type"],
+        "matched_patterns": detection["matched_patterns"],
+        "core_evidence": detection["core_evidence"],
+        "notification": detection["notification"],
+    }
+    return log_api_response("POST /calls/{log_id}/retranscribe-audio", response)

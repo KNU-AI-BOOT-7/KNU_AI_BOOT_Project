@@ -20,9 +20,14 @@ const CHANNELS = 1;
 //  - 최소 MIN_CHUNK_SECONDS는 쌓고, 이후 꼬리 SILENCE_SECONDS 구간이 조용하면 flush
 //  - 무음이 안 와도 MAX_CHUNK_SECONDS가 되면 강제 flush (상한)
 // 경계가 문장 사이 쉼에 떨어지므로 단어가 잘리지 않고, 겹침도 없어 중복이 원천 차단된다.
-const MIN_CHUNK_SECONDS = 3;
+//
+// MIN은 화자 구분과 전사 품질의 절충점이다: 너무 짧으면(<1초) "어", "감사합니다" 같은
+// 단독 조각이 문맥 없이 전사돼 화자 라벨이 튀고 말풍선이 파편화된다. 너무 길면 두 화자가
+// 한 청크에 섞인다. 1.2초 + 0.25초 무음 컷이면 발화 하나가 대체로 한 청크에 담긴다.
+// (연속된 같은 화자 조각은 프론트에서 한 말풍선으로 병합해 파편화를 추가로 보정한다.)
+const MIN_CHUNK_SECONDS = 1.2;
 const MAX_CHUNK_SECONDS = 10;
-const SILENCE_SECONDS = 0.3;
+const SILENCE_SECONDS = 0.25;
 const SILENCE_RMS = 0.01;
 
 /* AudioWorklet 프로세서: 입력 PCM 프레임(128 샘플)을 메인 스레드로 전달만 한다.
@@ -79,6 +84,9 @@ class WebAudioCapture implements AudioCaptureService {
   private source: MediaStreamAudioSourceNode | null = null;
   private frames: Float32Array[] = [];
   private frameLen = 0;
+  // 세션 전체 녹음(종료 시 전체 재전사용). 청크 flush로 비우지 않고 stop까지 계속 누적한다.
+  private sessionFrames: Float32Array[] = [];
+  private sessionLen = 0;
   private chunkIndex = 0;
   private chunkCb: ((c: AudioChunk) => void) | null = null;
   private errCb: ((m: string) => void) | null = null;
@@ -155,6 +163,9 @@ class WebAudioCapture implements AudioCaptureService {
         const frame = e.data as Float32Array;
         this.frames.push(frame);
         this.frameLen += frame.length;
+        // 세션 전체 버퍼에도 누적(청크 경계와 무관하게 통화 전체 보존).
+        this.sessionFrames.push(frame);
+        this.sessionLen += frame.length;
         // 최소 길이를 넘긴 뒤 꼬리가 조용해지면(말이 끊긴 지점) flush.
         // 무음이 계속 안 오면 상한(MAX)에서 강제 flush.
         if (
@@ -263,6 +274,19 @@ class WebAudioCapture implements AudioCaptureService {
     this.chunkCb?.({ bytes, base64, chunkIndex: this.chunkIndex });
   }
 
+  /** 세션 전체 녹음을 16-bit WAV Blob 하나로 반환한다(종료 시 전체 재전사용). stop() 전에 호출해야 한다. */
+  getSessionWav(): Blob | null {
+    if (this.sessionLen <= 0 || this.rate <= 0) return null;
+    const merged = new Float32Array(this.sessionLen);
+    let off = 0;
+    for (const f of this.sessionFrames) {
+      merged.set(f, off);
+      off += f.length;
+    }
+    const bytes = floatToWav(merged, this.rate);
+    return new Blob([bytes], { type: 'audio/wav' });
+  }
+
   stop() {
     this.stopped = true;
     try {
@@ -291,6 +315,8 @@ class WebAudioCapture implements AudioCaptureService {
     }
     this.frames = [];
     this.frameLen = 0;
+    this.sessionFrames = [];
+    this.sessionLen = 0;
   }
 }
 

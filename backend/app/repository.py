@@ -461,6 +461,16 @@ def list_call_messages(log_id: int) -> list[CallMessage]:
     return [CallMessage(**dict(row)) for row in rows]
 
 
+def delete_call_messages(log_id: int) -> int:
+    """통화 로그의 기존 발화를 모두 삭제한다(전체 재전사로 대화를 교체할 때 사용). 삭제 건수 반환."""
+    with get_connection() as connection:
+        cursor = connection.execute(
+            "DELETE FROM call_messages WHERE log_id = ?",
+            (log_id,),
+        )
+        return int(cursor.rowcount)
+
+
 def count_call_messages(log_id: int) -> int:
     """통화 로그에 저장된 발화 개수를 계산한다."""
     with get_connection() as connection:
