@@ -26,7 +26,7 @@ def init_db() -> None:
                 text TEXT NOT NULL,
                 label INTEGER NOT NULL CHECK (label IN (0, 1)),
                 source TEXT DEFAULT '',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
             )
             """
         )
@@ -43,7 +43,7 @@ def init_db() -> None:
                 case_id INTEGER NOT NULL,
                 turn_index INTEGER NOT NULL,
                 text TEXT NOT NULL,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
                 FOREIGN KEY (case_id) REFERENCES training_cases(id) ON DELETE CASCADE
             )
             """
@@ -68,8 +68,8 @@ def init_db() -> None:
                 detected_label INTEGER NOT NULL DEFAULT 0 CHECK (detected_label IN (0, 1)),
                 phishing_type TEXT DEFAULT '',
                 core_evidence TEXT DEFAULT '',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+                updated_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
             )
             """
         )
@@ -82,7 +82,7 @@ def init_db() -> None:
                 log_id INTEGER NOT NULL,
                 turn_index INTEGER NOT NULL,
                 content TEXT NOT NULL,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
                 FOREIGN KEY (log_id) REFERENCES call_logs(id) ON DELETE CASCADE
             )
             """
@@ -106,7 +106,7 @@ def init_db() -> None:
                 matched_patterns TEXT DEFAULT '[]',
                 retrieved_case_ids TEXT DEFAULT '[]',
                 model_version TEXT DEFAULT 'rag-v1',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
                 FOREIGN KEY (log_id) REFERENCES call_logs(id) ON DELETE CASCADE
             )
             """
@@ -125,7 +125,7 @@ def init_db() -> None:
                 reason TEXT NOT NULL,
                 message TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'sent',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
                 FOREIGN KEY (log_id) REFERENCES call_logs(id) ON DELETE CASCADE
             )
             """

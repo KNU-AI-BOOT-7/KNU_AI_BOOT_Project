@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any, Optional
 
 from backend.app.database import get_connection
@@ -263,13 +264,14 @@ def _build_training_text_from_turns(turns: list[TrainingCaseTurnCreate]) -> str:
 
 def create_call_log(call: CallLogCreate) -> CallLog:
     """실시간 분석 대상 통화 로그를 생성한다."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_connection() as connection:
         cursor = connection.execute(
             """
-            INSERT INTO call_logs(device_id, name, file_type)
-            VALUES (?, ?, ?)
+            INSERT INTO call_logs(device_id, name, file_type, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (call.device_id, call.name.strip(), call.file_type.strip() or "realtime"),
+            (call.device_id, call.name.strip(), call.file_type.strip() or "realtime", now, now),
         )
         log_id = int(cursor.lastrowid)
 
@@ -519,7 +521,7 @@ def save_detection_result(
                 detected_label = ?,
                 phishing_type = ?,
                 core_evidence = ?,
-                updated_at = CURRENT_TIMESTAMP
+                updated_at = ?
             WHERE id = ?
             """,
             (
@@ -529,6 +531,7 @@ def save_detection_result(
                 detected_label,
                 phishing_type,
                 core_evidence,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 log_id,
             ),
         )

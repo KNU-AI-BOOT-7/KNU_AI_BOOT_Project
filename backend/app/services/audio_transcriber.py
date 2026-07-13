@@ -42,11 +42,17 @@ def normalize_transcribed_segments(raw_segments: list[dict]) -> list[dict]:
         if not text:
             continue
 
+        # 전사 모델의 화자 라벨(A/B)을 프론트 표시용 화자A/화자B로 변환.
+        # (프론트는 화자A=상대방/왼쪽, 화자B=나/오른쪽으로 그린다)
+        raw_speaker = str(segment.get("speaker", "")).strip().upper()
+        speaker = f"화자{raw_speaker}" if raw_speaker in ("A", "B") else "화자A"
+
         normalized_segments.append(
             {
                 "chunk_id": index,
                 "start_time": segment.get("start", segment.get("start_time")),
                 "end_time": segment.get("end", segment.get("end_time")),
+                "speaker": speaker,
                 "text": text,
             }
         )

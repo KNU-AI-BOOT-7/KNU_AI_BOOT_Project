@@ -15,29 +15,26 @@ from backend.app.paths import ENV_PATH
 
 MODEL = os.environ.get("STT_MODEL", "google/gemini-3.5-flash")
 
-FULL_PROMPT = """이 오디오는 보이스피싱 의심 통화이거나 정상 금융 상담 통화다.
-전체 통화를 처음부터 끝까지 빠짐없이 한국어로 전사하라.
-계좌, 이체, 대출, 개인정보 관련 용어에 유의해 정확히 전사하라.
+PROMPT = """주어진 오디오에 실제로 들리는 발화만 있는 그대로 한국어로 전사하라.
+이 오디오가 어떤 내용일지 미리 추측하거나 전제하지 마라.
+계좌, 이체, 대출, 개인정보 관련 용어가 나오면 정확히 전사하라.
+
+매우 중요:
+- 들리지 않거나 무음/잡음뿐이면 절대 내용을 지어내지 말고 빈 배열 []만 출력하라.
+- 실제로 들린 것만 전사한다. 그럴듯하게 문장을 만들어내는 것(할루시네이션)은 금지한다.
+
+화자 구분:
+- 각 발화에 speaker 필드를 "A" 또는 "B"로 붙인다.
+- A = 통화를 주도하며 안내·설명·요구를 하는 쪽(상담원, 수사관, 기관 직원 등 전화를 건 사람).
+- B = 그 말을 듣고 응답하는 쪽(고객, 수신자).
+- 목소리 톤과 대화 맥락을 함께 보고 판단하되, 구분이 불확실하면 내용상 더 자연스러운 쪽을 고른다.
 
 규칙:
 - start/end 는 해당 발화의 시작/끝 시각이며 "MM:SS" 형식이다.
 - 발화(문장) 단위로 나누고, 시간 순서대로 정렬한다.
-- 화자 구분 필드는 출력하지 않는다.
 - 아래 JSON 배열만 출력한다. 다른 텍스트나 코드펜스는 출력하지 마라.
 
-[{"start": "MM:SS", "end": "MM:SS", "text": "..."}]"""
-
-REALTIME_PROMPT = """이 오디오는 실시간 통화의 짧은 청크다.
-들리는 한국어 발화만 빠르게 전사하라.
-계좌, 이체, 대출, 개인정보 관련 용어에 유의하라.
-
-규칙:
-- start/end 는 청크 안의 상대 시각이며 "MM:SS" 형식이다.
-- 들리는 발화만 시간 순서대로 짧게 나눈다.
-- 화자 구분 필드는 출력하지 않는다.
-- 아래 JSON 배열만 출력한다. 다른 텍스트나 코드펜스는 출력하지 마라.
-
-[{"start": "MM:SS", "end": "MM:SS", "text": "..."}]"""
+[{"start": "MM:SS", "end": "MM:SS", "speaker": "A", "text": "..."}]"""
 
 _client = None
 
@@ -126,7 +123,7 @@ def _extract_json_array(raw: str) -> list:
     return json.loads(raw[start:end + 1])
 
 
-def transcribe_audio(audio_file_path: str, retries: int = 1, realtime: bool = False) -> list[dict]:
+def transcribe_audio(audio_file_path: str, retries: int = 1) -> list[dict]:
     """오디오 파일을 OpenRouter 멀티모달 모델로 전사해 발화 segment 목록을 반환한다.
 
     반환 형식: [{"start": 초, "end": 초, "text": "..."}]
@@ -142,7 +139,7 @@ def transcribe_audio(audio_file_path: str, retries: int = 1, realtime: bool = Fa
         messages = [{
             "role": "user",
             "content": [
-                {"type": "text", "text": REALTIME_PROMPT if realtime else FULL_PROMPT},
+                {"type": "text", "text": PROMPT},
                 {"type": "input_audio", "input_audio": {"data": audio_b64, "format": audio_format}},
             ],
         }]
@@ -154,7 +151,7 @@ def transcribe_audio(audio_file_path: str, retries: int = 1, realtime: bool = Fa
                 model=MODEL,
                 messages=messages,
                 temperature=0,
-                max_tokens=1024 if realtime else 32768,
+                max_tokens=32768,
             )
             raw_segments = _extract_json_array(r.choices[0].message.content or "")
             break
@@ -171,6 +168,7 @@ def transcribe_audio(audio_file_path: str, retries: int = 1, realtime: bool = Fa
         segments.append({
             "start": round(_parse_time(seg.get("start", 0)), 2),
             "end": round(_parse_time(seg.get("end", 0)), 2),
+            "speaker": str(seg.get("speaker", "")).strip().upper(),
             "text": text,
         })
     return segments

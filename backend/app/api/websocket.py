@@ -338,27 +338,77 @@ def _current_risk_fields(log_id: int) -> dict:
 
 
 def _filter_duplicate_segments(log_id: int, segments: list[dict]) -> tuple[list[dict], int]:
-    """최근 저장된 긴 전사 문장이 반복되면 저장 대상에서 제외한다."""
+    """최근 저장된 긴 전사 문장이 반복되면 저장 대상에서 제외한다.
+
+    오디오 청크를 겹쳐(overlap) 보내므로, 새 세그먼트 앞부분이 직전 문장 끝과
+    실제로 겹쳐서 들어온다. 겹치는 부분을 먼저 잘라낸 뒤 완전 중복 여부를 판단한다.
+    """
     if not segments:
         return [], 0
 
     recent_messages = list_call_messages(log_id)[-120:]
     recent_texts = {_normalize_duplicate_key(message.content) for message in recent_messages}
+    last_text = recent_messages[-1].content if recent_messages else ""
     kept_segments = []
     skipped_count = 0
 
     for segment in segments:
-        text = str(segment.get("text", ""))
-        duplicate_key = _normalize_duplicate_key(text)
-        if duplicate_key and duplicate_key in recent_texts:
+        original_text = str(segment.get("text", ""))
+        stripped_text = _strip_overlap_prefix(last_text, original_text)
+        duplicate_key = _normalize_duplicate_key(stripped_text)
+
+        if not stripped_text or (duplicate_key and duplicate_key in recent_texts):
             skipped_count += 1
             continue
 
-        kept_segments.append(segment)
+        kept_segments.append({**segment, "text": stripped_text})
+        last_text = original_text  # 다음 세그먼트와의 겹침은 원본(자르기 전) 기준으로 비교
         if duplicate_key:
             recent_texts.add(duplicate_key)
 
     return kept_segments, skipped_count
+
+
+def _strip_overlap_prefix(previous_text: str, new_text: str, min_overlap: int = 6) -> str:
+    """오디오 겹침으로 new_text 앞부분이 previous_text 끝부분과 겹치면 그 부분을 잘라낸다.
+
+    이전 시도들의 문제:
+    - 단순 "prev의 끝 L글자 == curr의 앞 L글자" 완전일치 방식은, 겹친 오디오를 두 번
+      다르게 전사하면("가능하신" vs "가능하실까요") 끝까지 정확히 일치하는 길이가
+      없어서 못 잡는다.
+    - 공백 기준 단어 단위 비교는 겹침이 단어 중간에서 잘리면("대출관리팀" →
+      "관리팀"부터 시작) 아예 못 잡는다.
+    그래서 prev의 꼬리를 여러 길이 L로 잘라가며 curr 시작 부분과 "앞에서부터 몇 글자나
+    일치하는지"를 전부 계산하고, 그중 가장 길게 일치하는 지점을 겹침으로 본다. 일치가
+    길수록 진짜 겹침일 확률이 높으므로, 충분히 긴 일치(min_overlap)만 인정해 "습니다"
+    같은 흔한 어미의 우연한 일치는 걸러낸다.
+    """
+    prev = previous_text.strip()
+    curr = new_text.strip()
+    if not prev or not curr:
+        return curr
+
+    best_match = 0
+    max_len = min(len(prev), len(curr))
+    for length in range(1, max_len + 1):
+        window = prev[-length:]
+        matched = _shared_prefix_len(window, curr)
+        if matched > best_match:
+            best_match = matched
+
+    if best_match >= min_overlap:
+        return curr[best_match:].strip()
+    return curr
+
+
+def _shared_prefix_len(a: str, b: str) -> int:
+    """두 문자열이 앞에서부터 몇 글자나 같은지 센다."""
+    length = 0
+    for ca, cb in zip(a, b):
+        if ca != cb:
+            break
+        length += 1
+    return length
 
 
 def _normalize_duplicate_key(text: str) -> str:
