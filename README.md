@@ -139,24 +139,5 @@ curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
   -F "file=@call.m4a"
 ```
 
-## KoELECTRA 학습
-
-학습 데이터:
-
-```text
-data/PhishCatch-Data.json
-```
-
-학습 실행:
-
-```bash
-.venv/bin/python -m backend.app.train_transformer
-```
-
-학습 결과:
-
-```text
-models/koelectra
-```
 
 모델이 없으면 서버는 RAG/규칙 기반 위험도로 대체합니다.
