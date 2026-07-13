@@ -1,7 +1,7 @@
 __pycache__/
 *.py[cod]
 .venv/
-data/
+/data/
 .env
 samples/
 models/
