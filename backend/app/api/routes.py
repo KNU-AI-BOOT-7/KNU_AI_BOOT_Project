@@ -35,6 +35,16 @@ from backend.app.services import audio_transcriber, call_analyzer
 router = APIRouter()
 
 
+def _optional_int(value: object, field_name: str) -> Optional[int]:
+    """multipart form/query에서 넘어온 선택 정수 값을 안전하게 변환한다."""
+    if value is None or value == "":
+        return None
+    try:
+        return int(str(value))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"{field_name}는 정수여야 합니다.") from exc
+
+
 @router.get("/health")
 def health() -> dict[str, str]:
     """서버 상태 확인 엔드포인트."""
@@ -116,6 +126,14 @@ async def analyze_call_audio(
     suffix = os.path.splitext(file.filename or "")[1].lower()
     if suffix not in (".mp3", ".wav", ".m4a"):
         raise HTTPException(status_code=400, detail="mp3, wav, m4a 파일만 업로드할 수 있습니다.")
+
+    form = await request.form()
+    form_device_id = _optional_int(form.get("device_id"), "device_id")
+    form_top_k = _optional_int(form.get("top_k"), "top_k")
+    if form_device_id is not None:
+        device_id = form_device_id
+    if form_top_k is not None:
+        top_k = form_top_k
 
     raw_bytes = await file.read()
     log_api_request(

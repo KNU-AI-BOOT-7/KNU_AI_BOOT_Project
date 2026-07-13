@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import inspect
 import os
 import tempfile
 
@@ -19,7 +20,8 @@ def transcribe_audio_file(audio_path: str, realtime: bool = False) -> list[dict]
             detail="오디오 전사 모듈(backend.app.mp3_json)이 아직 설정되어 있지 않습니다.",
         ) from exc
 
-    return transcribe_audio(audio_path, realtime=realtime)
+    kwargs = {"realtime": realtime} if "realtime" in inspect.signature(transcribe_audio).parameters else {}
+    return transcribe_audio(audio_path, **kwargs)
 
 
 def transcribe_audio_bytes(audio_bytes: bytes, audio_format: str) -> list[dict]:
