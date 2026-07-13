@@ -115,7 +115,11 @@ class RagPhishingDetector:
             self._indexed_cases = None
 
     def detect(
-        self, text: str, top_k: int = 5, risk_score_override: Optional[float] = None
+        self,
+        text: str,
+        top_k: int = 5,
+        risk_score_override: Optional[float] = None,
+        use_llm_evidence: bool = True,
     ) -> RagDetectResponse:
         """RAG 검색, 점수 계산, 근거 생성을 실행한다.
 
@@ -146,6 +150,7 @@ class RagPhishingDetector:
             risk_score=risk_score,
             matched_patterns=matched_patterns,
             retrieved_cases=retrieved_cases,
+            use_llm=use_llm_evidence,
         )
 
         return RagDetectResponse(

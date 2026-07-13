@@ -7,7 +7,7 @@ import os
 import tempfile
 from typing import Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
 from backend.app.api.response_logger import log_api_request, log_api_response
 from backend.app.repository import (
@@ -102,6 +102,7 @@ def get_training_cases(limit: int = 100) -> list[TrainingCase]:
 
 @router.post("/calls/analyze-audio")
 async def analyze_call_audio(
+    request: Request,
     file: UploadFile = File(...),
     device_id: Optional[int] = None,
     top_k: int = 5,
@@ -121,6 +122,7 @@ async def analyze_call_audio(
         "POST /calls/analyze-audio",
         {
             "file_name": file.filename,
+            "client_host": request.client.host if request.client else None,
             "device_id": device_id,
             "top_k": top_k,
             "audio_format": suffix.lstrip("."),

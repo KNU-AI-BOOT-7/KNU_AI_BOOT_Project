@@ -27,9 +27,10 @@ class EvidenceGenerator:
         risk_score: float,
         matched_patterns: list[str],
         retrieved_cases: list[RetrievedCase],
+        use_llm: bool = True,
     ) -> str:
         """LLM 또는 로컬 대체 템플릿으로 핵심근거를 생성한다."""
-        if os.getenv("OPENAI_API_KEY"):
+        if use_llm and os.getenv("OPENAI_API_KEY"):
             try:
                 return self._generate_with_openai(
                     text=text,

@@ -43,7 +43,7 @@ def clear_detector_index() -> None:
     detector.clear_index()
 
 
-def detect_and_persist(log_id: int, top_k: int = 5) -> dict:
+def detect_and_persist(log_id: int, top_k: int = 5, use_llm_evidence: bool = True) -> dict:
     """
     누적 통화 내용을 탐지하고 결과와 필요 알림 이력을 DB에 저장한다.
 
@@ -63,6 +63,7 @@ def detect_and_persist(log_id: int, top_k: int = 5) -> dict:
         text=call_text,
         top_k=top_k,
         risk_score_override=koelectra_score,
+        use_llm_evidence=use_llm_evidence,
     )
     if koelectra_score is None:
         risk_score = detection.risk_score

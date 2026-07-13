@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -31,6 +32,7 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
     log_id: Optional[int] = None
     audio_format = "m4a"
     chunk_index = 0
+    client_host = websocket.client.host if websocket.client else None
 
     try:
         while True:
@@ -45,6 +47,7 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
                     {
                         "frame": "bytes",
                         "log_id": log_id,
+                        "client_host": client_host,
                         "chunk_index": incoming_chunk_index,
                         "audio_format": audio_format,
                         "byte_size": len(packet["bytes"] or b""),
@@ -78,6 +81,7 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
                     {
                         "frame": str(packet.get("type", "unknown")),
                         "log_id": log_id,
+                        "client_host": client_host,
                     },
                 )
                 if not await _send_json(websocket, {"type": "error", "message": "지원하지 않는 WebSocket 메시지입니다."}):
@@ -91,12 +95,24 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
                 {
                     "frame": "text",
                     "log_id": log_id,
+                    "client_host": client_host,
                     "event_type": event_type,
                     "payload": payload,
                 },
             )
 
             if event_type == "start":
+                if "file_type" not in payload:
+                    if not await _send_json(
+                        websocket,
+                        {
+                            "type": "error",
+                            "message": "start 메시지에는 file_type='realtime'이 필요합니다. 프론트 번들이 오래됐거나 fipe 오타를 보내고 있습니다.",
+                        },
+                    ):
+                        return
+                    continue
+
                 audio_format = audio_transcriber.normalize_audio_format(str(payload.get("audio_format", audio_format)))
                 call = create_call_log(
                     CallLogCreate(
@@ -212,6 +228,7 @@ async def _handle_audio_chunk(
     chunk_index: int,
 ) -> dict:
     """실시간 오디오 chunk를 전사하고 누적 통화 분석 응답을 만든다."""
+    started_at = time.monotonic()
     if not audio_bytes:
         return {
             "type": "audio_chunk_error",
@@ -224,6 +241,7 @@ async def _handle_audio_chunk(
 
     try:
         raw_segments = await asyncio.to_thread(audio_transcriber.transcribe_audio_bytes, audio_bytes, audio_format)
+        transcribed_at = time.monotonic()
     except HTTPException as exc:
         return {
             "type": "audio_chunk_error",
@@ -271,7 +289,12 @@ async def _handle_audio_chunk(
             "message": "전사된 발화가 없습니다." if skipped_duplicate_count == 0 else "중복 전사로 판단되어 저장하지 않았습니다.",
         }
 
-    detection = await asyncio.to_thread(call_analyzer.detect_and_persist, log_id=log_id)
+    detection = await asyncio.to_thread(
+        call_analyzer.detect_and_persist,
+        log_id=log_id,
+        use_llm_evidence=False,
+    )
+    analyzed_at = time.monotonic()
     response = call_analyzer.build_client_audio_analysis_response(
         log_id=log_id,
         chunk_index=chunk_index,
@@ -280,6 +303,11 @@ async def _handle_audio_chunk(
         detection=detection,
     )
     response["skipped_duplicate_count"] = skipped_duplicate_count
+    response["latency_ms"] = {
+        "stt": round((transcribed_at - started_at) * 1000),
+        "analysis": round((analyzed_at - transcribed_at) * 1000),
+        "total": round((analyzed_at - started_at) * 1000),
+    }
     return response
 
 
