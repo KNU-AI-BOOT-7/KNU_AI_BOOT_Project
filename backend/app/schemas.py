@@ -11,7 +11,6 @@ class TrainingCaseTurnCreate(BaseModel):
     """학습 사례 안의 단일 발화."""
 
     turn_index: int = Field(..., ge=1, description="통화 안에서의 발화 순서")
-    role: str = Field("unknown", description="speaker_a, speaker_b, caller 등 발화자 구분")
     text: str = Field(..., min_length=1, description="발화 내용")
 
 
@@ -111,7 +110,6 @@ class CallLogDetail(BaseModel):
 class CallMessageCreate(BaseModel):
     """통화 중 클라이언트가 분석 요청으로 보내는 발화."""
 
-    role: str = Field("unknown", description="caller, receiver, speaker_a 등 발화자 구분")
     content: str = Field(..., min_length=1, description="발화 내용")
     turn_index: Optional[int] = Field(None, ge=1, description="대화 순서")
 
@@ -122,7 +120,6 @@ class CallMessage(BaseModel):
     id: int
     log_id: int
     turn_index: int
-    role: str
     content: str
     created_at: str
 

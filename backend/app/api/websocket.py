@@ -23,9 +23,8 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
     """
     클라이언트가 3~4초 단위로 보내는 통화 음성 chunk를 받아 실시간 분석을 수행한다.
 
-    현재 프론트에서 화자 분리를 하지 않으므로, start 이후 m4a 바이너리 chunk를
-    그대로 받고 서버 전사 결과를 unknown 화자의 발화로 저장한다. mp3/wav도
-    테스트/호환 목적으로 지원하며, 기존 JSON 텍스트 메시지도 유지한다.
+    start 이후 m4a 바이너리 chunk를 그대로 받고 서버 전사 결과를 발화 내용으로 저장한다.
+    mp3/wav도 테스트/호환 목적으로 지원하며, 기존 JSON 텍스트 메시지도 유지한다.
     """
     await websocket.accept()
     log_id: Optional[int] = None
@@ -135,7 +134,6 @@ async def analyze_call_messages(websocket: WebSocket) -> None:
             saved_message = insert_call_message(
                 log_id=log_id,
                 message=CallMessageCreate(
-                    role=str(payload.get("role", "unknown")),
                     content=str(payload.get("content", "")),
                     turn_index=payload.get("turn_index"),
                 ),
@@ -218,7 +216,6 @@ async def _handle_audio_chunk(
             insert_call_message(
                 log_id=log_id,
                 message=CallMessageCreate(
-                    role=segment["speaker"],
                     content=segment["text"],
                 ),
             )

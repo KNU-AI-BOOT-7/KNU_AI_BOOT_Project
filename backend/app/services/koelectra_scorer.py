@@ -5,10 +5,8 @@
   - 룰 매칭(matched_patterns), RAG 유사 사례(retrieved_cases), 근거 문장(core_evidence)은
     기존 RagPhishingDetector / EvidenceGenerator가 설명 전용으로 계속 담당한다.
 
-입력 포맷 주의:
-  모델은 "[A] 발화 [B] 발화 ..." 형태(화자 태그 + 공백 연결)로 학습됐다 (train_transformer.py).
-  role 문자열(caller/receiver/speaker_a 등)이 무엇이든, 통화 안에서의 등장 순서로
-  첫 화자=[A], 둘째 화자=[B]로 매핑해야 학습 분포와 일치한다 (build_dataset.py와 동일 규칙).
+입력 포맷:
+  화자 구분 없이 발화 내용을 순서대로 공백 연결해 사용한다.
 """
 
 from __future__ import annotations
@@ -44,10 +42,10 @@ class KoElectraScorer:
         self._ensure_model_ready()
         from backend.app.predict_transformer import predict_proba
 
-        predict_proba(["[A] 로드 확인"])
+        predict_proba(["로드 확인"])
 
     def score(self, messages) -> float:
-        """통화 발화 목록(role/content 속성 필요)의 피싱 확률을 반환한다.
+        """통화 발화 목록(content 속성 필요)의 피싱 확률을 반환한다.
 
         누적 전체 문맥과 최근 WINDOW턴 중 높은 확률을 사용한다.
         """
@@ -57,16 +55,12 @@ class KoElectraScorer:
         self._ensure_model_ready()
         from backend.app.predict_transformer import predict_proba
 
-        speaker_map: dict[str, str] = {}
-        tagged: list[str] = []
-        for message in messages:
-            role = str(message.role)
-            if role not in speaker_map:
-                speaker_map[role] = chr(ord("A") + len(speaker_map))
-            tagged.append(f"[{speaker_map[role]}] {message.content}")
+        contents = [str(message.content).strip() for message in messages if str(message.content).strip()]
+        if not contents:
+            return 0.0
 
-        cumulative = " ".join(tagged)
-        window = " ".join(tagged[-WINDOW:])
+        cumulative = " ".join(contents)
+        window = " ".join(contents[-WINDOW:])
         probs = predict_proba([cumulative, window])
         return float(max(probs))
 

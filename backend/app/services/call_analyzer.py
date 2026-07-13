@@ -158,7 +158,6 @@ def build_client_audio_analysis_response(
             {
                 "message_id": message["id"],
                 "turn_index": message["turn_index"],
-                "role": message["role"],
                 "content": message["content"],
                 "start_time": segment["start_time"],
                 "end_time": segment["end_time"],

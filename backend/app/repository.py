@@ -119,7 +119,7 @@ def list_training_case_turns(case_id: int) -> list[TrainingCaseTurn]:
     with get_connection() as connection:
         rows = connection.execute(
             """
-            SELECT id, case_id, turn_index, role, text, created_at
+            SELECT id, case_id, turn_index, text, created_at
             FROM training_case_turns
             WHERE case_id = ?
             ORDER BY turn_index ASC, id ASC
@@ -140,8 +140,8 @@ def parse_training_cases_json(raw_bytes: bytes) -> tuple[list[TrainingCaseCreate
         "id": "normal_S0001",
         "label": 0,
         "source": "financial_consulting",
-        "text": "speaker_a: ... speaker_b: ...",
-        "turns": [{"turn_index": 1, "role": "speaker_a", "text": "..."}]
+        "text": "상담원이 통화 가능 여부를 묻는다...",
+        "turns": [{"turn_index": 1, "text": "..."}]
       }
     ]
     """
@@ -220,11 +220,11 @@ def _insert_training_case_turns(
 
     connection.executemany(
         """
-        INSERT INTO training_case_turns(case_id, turn_index, role, text)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO training_case_turns(case_id, turn_index, text)
+        VALUES (?, ?, ?)
         """,
         [
-            (case_id, turn.turn_index, turn.role.strip(), turn.text.strip())
+            (case_id, turn.turn_index, turn.text.strip())
             for turn in turns
         ],
     )
@@ -245,11 +245,9 @@ def _parse_training_turns(raw_turns: Any) -> list[TrainingCaseTurnCreate]:
 
         turn_index = item.get("turn_index", item.get("turn", index))
         text = str(item.get("text", item.get("content", ""))).strip()
-        role = str(item.get("role", item.get("speaker", "unknown"))).strip()
         turns.append(
             TrainingCaseTurnCreate(
                 turn_index=int(turn_index),
-                role=role or "unknown",
                 text=text,
             )
         )
@@ -259,7 +257,7 @@ def _parse_training_turns(raw_turns: Any) -> list[TrainingCaseTurnCreate]:
 
 def _build_training_text_from_turns(turns: list[TrainingCaseTurnCreate]) -> str:
     """turns만 있는 JSON을 RAG 검색용 text로 합친다."""
-    return "\n".join(f"{turn.role}: {turn.text}" for turn in turns)
+    return "\n".join(turn.text for turn in turns)
 
 
 def create_call_log(call: CallLogCreate) -> CallLog:
@@ -402,10 +400,10 @@ def insert_call_message(log_id: int, message: CallMessageCreate) -> CallMessage:
     with get_connection() as connection:
         cursor = connection.execute(
             """
-            INSERT INTO call_messages(log_id, turn_index, role, content)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO call_messages(log_id, turn_index, content)
+            VALUES (?, ?, ?)
             """,
-            (log_id, turn_index, message.role.strip(), message.content.strip()),
+            (log_id, turn_index, message.content.strip()),
         )
         message_id = int(cursor.lastrowid)
 
@@ -417,7 +415,7 @@ def get_call_message(message_id: int) -> CallMessage:
     with get_connection() as connection:
         row = connection.execute(
             """
-            SELECT id, log_id, turn_index, role, content, created_at
+            SELECT id, log_id, turn_index, content, created_at
             FROM call_messages
             WHERE id = ?
             """,
@@ -435,7 +433,7 @@ def list_call_messages(log_id: int) -> list[CallMessage]:
     with get_connection() as connection:
         rows = connection.execute(
             """
-            SELECT id, log_id, turn_index, role, content, created_at
+            SELECT id, log_id, turn_index, content, created_at
             FROM call_messages
             WHERE log_id = ?
             ORDER BY turn_index ASC, id ASC
@@ -460,7 +458,7 @@ def count_call_messages(log_id: int) -> int:
 def build_call_text(log_id: int) -> str:
     """저장된 통화 발화를 하나의 탐지용 텍스트로 합친다."""
     messages = list_call_messages(log_id)
-    return "\n".join(f"{message.role}: {message.content}" for message in messages)
+    return "\n".join(message.content for message in messages)
 
 
 def save_detection_result(

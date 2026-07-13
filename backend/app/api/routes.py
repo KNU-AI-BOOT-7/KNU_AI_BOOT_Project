@@ -131,7 +131,6 @@ async def analyze_call_audio(
         insert_call_message(
             log_id=call.id,
             message=CallMessageCreate(
-                role=segment["speaker"],
                 content=segment["text"],
                 turn_index=turn_index,
             ),

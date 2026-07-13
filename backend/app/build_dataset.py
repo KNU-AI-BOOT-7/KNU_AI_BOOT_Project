@@ -1,8 +1,8 @@
 """data/ 아래 4가지 형식의 JSON을 통합 형식으로 변환한다.
 
 출력: data/PhishCatch-Data.json
-  {"cases": [{"id", "label", "turns": [{"turn_index", "role", "text"}]}]}
-  label: 피싱 1, 정상 0 / role: speaker_a, speaker_b
+  {"cases": [{"id", "label", "turns": [{"turn_index", "text"}]}]}
+  label: 피싱 1, 정상 0
 """
 import json
 import glob
@@ -41,18 +41,14 @@ def clean_mask(text):
 
 
 def make_case(case_id, label, raw_turns):
-    """raw_turns: [(speaker_key, text), ...] 순서대로. 빈 텍스트는 제외."""
-    speaker_map = {}  # 등장 순서대로 speaker_a, speaker_b 부여
+    """raw_turns: 텍스트 목록. 빈 텍스트는 제외."""
     turns = []
-    for speaker, text in raw_turns:
+    for text in raw_turns:
         text = clean_mask(text.strip())
         if not text:
             continue
-        if speaker not in speaker_map:
-            speaker_map[speaker] = f"speaker_{chr(ord('a') + len(speaker_map))}"
         turns.append({
             "turn_index": len(turns) + 1,
-            "role": speaker_map[speaker],
             "text": text,
         })
     return {"id": case_id, "label": label, "turns": turns}
@@ -71,7 +67,7 @@ def load_phishing():
             calls = json.load(f)
         for i, call in enumerate(calls, 1):
             segs = sorted(call["segments"], key=lambda s: s["chunk_id"])
-            raw = [(s["speaker"], s["text"]) for s in segs]
+            raw = [s["text"] for s in segs]
             cases.append(make_case(f"phishing_{code}_{i:04d}", 1, raw))
         print(f"phishing/{folder}: {len(calls)}건")
     return cases
@@ -84,7 +80,7 @@ def load_finance():
     cases = []
     for i, sess in enumerate(sessions, 1):
         dialogue = sorted(sess["dialogue"], key=lambda t: t["turn"])
-        raw = [(t["role"], t["text"]) for t in dialogue]
+        raw = [t["text"] for t in dialogue]
         cases.append(make_case(f"normal_finance_{i:04d}", 0, raw))
     print(f"normal/금융상담: {len(sessions)}건")
     return cases
@@ -98,7 +94,7 @@ def load_free_talk():
             with open(path, encoding="utf-8") as f:
                 d = json.load(f)
             conv = sorted(d["Conversation"], key=lambda t: int(t["TextNo"]))
-            raw = [(t["SpeakerNo"], t["Text"]) for t in conv]
+            raw = [t["Text"] for t in conv]
             cases.append(make_case(f"normal_free_{code}_{i:04d}", 0, raw))
         print(f"normal/자유대화/{sub}: {len(paths)}건")
     return cases
@@ -112,7 +108,15 @@ def load_outbound():
             scripts += json.load(f)
     cases = []
     for i, s in enumerate(scripts, 1):
-        cases.append(make_case(f"normal_outbound_{i:04d}", 0, s["turns"]))
+        turns = []
+        for turn in s["turns"]:
+            if isinstance(turn, dict):
+                turns.append(turn["text"])
+            elif isinstance(turn, list) and len(turn) >= 2:
+                turns.append(turn[1])
+            else:
+                turns.append(str(turn))
+        cases.append(make_case(f"normal_outbound_{i:04d}", 0, turns))
     print(f"normal/outbound_scripts(작성): {len(scripts)}건")
     return cases
 

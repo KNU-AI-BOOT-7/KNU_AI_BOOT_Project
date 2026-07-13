@@ -31,7 +31,7 @@ def predict_proba(texts):
 
 
 def _fmt(turns):
-    return " ".join(f"[{t['role'].split('_')[1].upper()}] {t['text']}" for t in turns)
+    return " ".join(t["text"] for t in turns)
 
 
 if __name__ == "__main__":

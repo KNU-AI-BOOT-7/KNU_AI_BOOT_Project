@@ -42,13 +42,13 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 case_id INTEGER NOT NULL,
                 turn_index INTEGER NOT NULL,
-                role TEXT NOT NULL DEFAULT 'unknown',
                 text TEXT NOT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (case_id) REFERENCES training_cases(id) ON DELETE CASCADE
             )
             """
         )
+        _drop_column_if_exists(connection, "training_case_turns", "role")
         connection.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_training_case_turns_case_id
@@ -81,13 +81,13 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 log_id INTEGER NOT NULL,
                 turn_index INTEGER NOT NULL,
-                role TEXT NOT NULL DEFAULT 'unknown',
                 content TEXT NOT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (log_id) REFERENCES call_logs(id) ON DELETE CASCADE
             )
             """
         )
+        _drop_column_if_exists(connection, "call_messages", "role")
         connection.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_call_messages_log_id
@@ -147,3 +147,17 @@ def _ensure_column(
     connection.execute(
         f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
     )
+
+
+def _drop_column_if_exists(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+) -> None:
+    """기존 SQLite DB에 남아 있는 더 이상 쓰지 않는 컬럼을 제거한다."""
+    columns = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    existing_column_names = {column["name"] for column in columns}
+    if column_name not in existing_column_names:
+        return
+
+    connection.execute(f"ALTER TABLE {table_name} DROP COLUMN {column_name}")

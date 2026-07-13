@@ -17,8 +17,8 @@
 
 사용 예:
     det = RealtimeDetector(use_llm=True)
-    for role, text in stt_chunks:
-        result = det.add(text, role)   # {"risk_score":0.84,"risk_level":"warning",...}
+    for text in stt_chunks:
+        result = det.add(text)         # {"risk_score":0.84,"risk_level":"warning",...}
     final = det.finalize()             # 통화 종료 시 종합 판정
 
 TF-IDF 베이스라인(train_baseline.py)은 런타임에서 제외됐고, KoELECTRA의 가치를
@@ -42,29 +42,21 @@ def level_of(score):
     return "normal"
 
 
-def _tag(role, text):
-    """KoELECTRA 학습 포맷과 동일하게 화자 태그를 붙인다: '[A] ...'."""
-    letter = role.split("_")[-1].upper() if role else "A"
-    return f"[{letter}] {text}"
-
-
 class RealtimeDetector:
     def __init__(self, use_llm=True):
         self.use_llm = use_llm
-        self.turns = []           # (role, text) 튜플
+        self.turns = []           # text 목록
         self.peak_score = 0.0
         self.llm_result = None
         self.llm_at_turn = None
 
     def _ke_score(self):
-        """1차 KoELECTRA: 화자 태그 포맷(학습과 동일). 누적 vs 최근 WINDOW턴 중 높은 확률."""
+        """1차 KoELECTRA: 누적 vs 최근 WINDOW턴 중 높은 확률."""
         from backend.app.predict_transformer import predict_proba
-        tagged = [_tag(r, t) for r, t in self.turns]
-        cum = " ".join(tagged)
-        win = " ".join(tagged[-WINDOW:])
+        cum = " ".join(self.turns)
+        win = " ".join(self.turns[-WINDOW:])
         probs = predict_proba([cum, win])
-        # LLM용 자연 텍스트(태그 없음)도 함께 반환 — LLM은 자연 전사문 기준으로 판정한다
-        plain = " ".join(t for _, t in self.turns)
+        plain = " ".join(self.turns)
         return float(max(probs)), plain
 
     def _run_llm(self, context):
@@ -100,9 +92,9 @@ class RealtimeDetector:
                 return llm, "llm"      # LLM이 더 위험하다고 봄 (근거 첨부됨)
         return ke, "koelectra"
 
-    def add(self, text, role="a"):
+    def add(self, text):
         """새 발화(STT 청크)를 추가하고 현재 위험도를 반환한다."""
-        self.turns.append((role, text))
+        self.turns.append(text)
         ke, plain = self._ke_score()
 
         # KoELECTRA가 게이트 미만이면 정상 통과 (2차 스킵)
@@ -162,7 +154,7 @@ def _eval_cascade_on(ev, fp):
         c = id2case[cid]
         det = RealtimeDetector(use_llm=True)
         for t in c["turns"]:
-            det.add(t["text"], t["role"])
+            det.add(t["text"])
         r = det.finalize()
         fixed = "✅ 정상으로 교정" if det.peak_score < TH_WARNING else "❌ 여전히 경고"
         print(f"  {cid}: KoELECTRA {ke_p*100:.0f}% → 최종 {det.peak_score*100:.0f}% ({r['source']}) {fixed}")

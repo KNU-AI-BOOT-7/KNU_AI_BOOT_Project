@@ -1,5 +1,5 @@
-"""화자 구분 + 타임스탬프 + dataset.json 스키마 통합 (OpenRouter API 버전)
-   - google/gemini-3.5-flash 멀티모달 모델이 전사·화자 구분·타임스탬프를 한 번에 수행
+"""타임스탬프 포함 전사 + dataset.json 스키마 통합 (OpenRouter API 버전)
+   - google/gemini-3.5-flash 멀티모달 모델이 전사와 타임스탬프 생성을 수행
    - 키는 .env의 OPENROUTER_API_KEY, 모델은 STT_MODEL 환경변수로 변경 가능
 """
 import base64
@@ -16,16 +16,16 @@ from backend.app.paths import ENV_PATH
 MODEL = os.environ.get("STT_MODEL", "google/gemini-3.5-flash")
 
 PROMPT = """이 오디오는 보이스피싱 의심 통화이거나 정상 금융 상담 통화다.
-전체 통화를 처음부터 끝까지 빠짐없이 한국어로 전사하고 화자를 구분하라.
+전체 통화를 처음부터 끝까지 빠짐없이 한국어로 전사하라.
 계좌, 이체, 대출, 개인정보 관련 용어에 유의해 정확히 전사하라.
 
 규칙:
-- 화자는 등장 순서대로 "화자A", "화자B", ... 로 표기한다. (이 통화의 화자는 보통 {n}명)
 - start/end 는 해당 발화의 시작/끝 시각이며 "MM:SS" 형식이다.
 - 발화(문장) 단위로 나누고, 시간 순서대로 정렬한다.
+- 화자 구분 필드는 출력하지 않는다.
 - 아래 JSON 배열만 출력한다. 다른 텍스트나 코드펜스는 출력하지 마라.
 
-[{"start": "MM:SS", "end": "MM:SS", "speaker": "화자A", "text": "..."}]"""
+[{"start": "MM:SS", "end": "MM:SS", "text": "..."}]"""
 
 _client = None
 
@@ -114,11 +114,10 @@ def _extract_json_array(raw: str) -> list:
     return json.loads(raw[start:end + 1])
 
 
-def transcribe_with_speakers(audio_file_path: str, expected_speakers: int = 2, retries: int = 1) -> list[dict]:
+def transcribe_audio(audio_file_path: str, retries: int = 1) -> list[dict]:
     """오디오 파일을 OpenRouter 멀티모달 모델로 전사해 발화 segment 목록을 반환한다.
 
-    반환 형식: [{"start": 초, "end": 초, "speaker": "화자A", "text": "..."}]
-    (로컬 모델 버전과 동일한 스키마)
+    반환 형식: [{"start": 초, "end": 초, "text": "..."}]
     """
     global _client
     if _client is None:
@@ -131,7 +130,7 @@ def transcribe_with_speakers(audio_file_path: str, expected_speakers: int = 2, r
         messages = [{
             "role": "user",
             "content": [
-                {"type": "text", "text": PROMPT.replace("{n}", str(expected_speakers))},
+                {"type": "text", "text": PROMPT},
                 {"type": "input_audio", "input_audio": {"data": audio_b64, "format": audio_format}},
             ],
         }]
@@ -160,10 +159,14 @@ def transcribe_with_speakers(audio_file_path: str, expected_speakers: int = 2, r
         segments.append({
             "start": round(_parse_time(seg.get("start", 0)), 2),
             "end": round(_parse_time(seg.get("end", 0)), 2),
-            "speaker": str(seg.get("speaker", "화자A")).strip(),
             "text": text,
         })
     return segments
+
+
+def transcribe_with_speakers(audio_file_path: str, expected_speakers: int = 2, retries: int = 1) -> list[dict]:
+    """이전 호출부 호환용 alias. 실제 반환에는 화자 구분 필드가 없다."""
+    return transcribe_audio(audio_file_path, retries=retries)
 
 
 if __name__ == "__main__":
@@ -201,14 +204,13 @@ if __name__ == "__main__":
             continue
 
         print(f"=== [{idx}/{len(audio_files)}] {filename} ===")
-        segments_raw = transcribe_with_speakers(os.path.join(TEST_DIR, filename), expected_speakers=2)
+        segments_raw = transcribe_audio(os.path.join(TEST_DIR, filename))
 
         segments = [
             {
                 "chunk_id": i + 1,
                 "start_time": seg.get("start"),
                 "end_time": seg.get("end"),
-                "speaker": seg.get("speaker"),
                 "text": seg.get("text", "").strip(),
                 "matched_patterns": []
             }

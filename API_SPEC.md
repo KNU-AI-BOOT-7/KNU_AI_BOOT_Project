@@ -45,7 +45,6 @@ JSON 형식:
       "turns": [
         {
           "turn_index": 1,
-          "role": "speaker_a",
           "text": "검찰입니다."
         }
       ]
@@ -172,7 +171,6 @@ curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
       "chunk_id": 1,
       "start_time": 0.0,
       "end_time": 3.2,
-      "speaker": "speaker_a",
       "text": "서울중앙지검입니다."
     }
   ],
@@ -236,7 +234,7 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
 오디오 chunk 요청:
 
 `start` 이후 프론트는 3~4초 단위의 mp3, wav 또는 m4a 바이너리 frame을 그대로 전송합니다.
-화자 분리가 되지 않은 상태이므로 백엔드는 전사 결과를 `unknown` 화자의 발화로 저장합니다.
+백엔드는 전사 결과를 화자 구분 없이 순서와 발화 내용으로 저장합니다.
 
 ```text
 <3~4초 wav, mp3 또는 m4a binary frame>
@@ -265,7 +263,6 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
     {
       "message_id": 12,
       "turn_index": 1,
-      "role": "unknown",
       "content": "안녕하세요. 카드 결제일 문의드립니다.",
       "start_time": 0.0,
       "end_time": 3.1
@@ -290,7 +287,6 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
     {
       "message_id": 13,
       "turn_index": 3,
-      "role": "unknown",
       "content": "서울중앙지검입니다. 계좌가 범죄에 연루되었습니다.",
       "start_time": 0.0,
       "end_time": 3.8

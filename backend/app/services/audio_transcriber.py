@@ -12,14 +12,14 @@ from fastapi import HTTPException
 def transcribe_audio_file(audio_path: str) -> list[dict]:
     """오디오 파일을 전사 모듈에 넘겨 발화 segment 목록으로 변환한다."""
     try:
-        from backend.app.mp3_json import transcribe_with_speakers
+        from backend.app.mp3_json import transcribe_audio
     except ModuleNotFoundError as exc:
         raise HTTPException(
             status_code=501,
             detail="오디오 전사 모듈(backend.app.mp3_json)이 아직 설정되어 있지 않습니다.",
         ) from exc
 
-    return transcribe_with_speakers(audio_path)
+    return transcribe_audio(audio_path)
 
 
 def transcribe_audio_bytes(audio_bytes: bytes, audio_format: str) -> list[dict]:
@@ -47,7 +47,6 @@ def normalize_transcribed_segments(raw_segments: list[dict]) -> list[dict]:
                 "chunk_id": index,
                 "start_time": segment.get("start", segment.get("start_time")),
                 "end_time": segment.get("end", segment.get("end_time")),
-                "speaker": str(segment.get("speaker", segment.get("role", "unknown")) or "unknown"),
                 "text": text,
             }
         )

@@ -42,8 +42,7 @@ def load_split():
         cases = json.load(f)["cases"]
     texts, labels = [], []
     for c in cases:
-        # 화자 구분을 모델이 볼 수 있게 태그를 붙인다
-        text = " ".join(f"[{t['role'].split('_')[1].upper()}] {t['text']}" for t in c["turns"])
+        text = " ".join(t["text"] for t in c["turns"])
         texts.append(text)
         labels.append(c["label"])
     return train_test_split(texts, labels, test_size=0.2, stratify=labels, random_state=SEED)
