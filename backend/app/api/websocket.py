@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
-from backend.app.repository import create_call_log, insert_call_message
+from backend.app.repository import create_call_log, get_call_log, insert_call_message
 from backend.app.schemas import CallLogCreate, CallMessageCreate
 from backend.app.services import audio_transcriber, call_analyzer
 
@@ -188,6 +188,7 @@ async def _handle_audio_chunk(
             "type": "audio_chunk_error",
             "log_id": log_id,
             "chunk_index": chunk_index,
+            **_current_risk_fields(log_id),
             "message": "빈 오디오 chunk입니다.",
         }
 
@@ -198,6 +199,7 @@ async def _handle_audio_chunk(
             "type": "audio_chunk_error",
             "log_id": log_id,
             "chunk_index": chunk_index,
+            **_current_risk_fields(log_id),
             "message": exc.detail,
         }
     except Exception as exc:
@@ -206,6 +208,7 @@ async def _handle_audio_chunk(
             "type": "audio_chunk_error",
             "log_id": log_id,
             "chunk_index": chunk_index,
+            **_current_risk_fields(log_id),
             "message": f"오디오 chunk 전사에 실패했습니다: {exc}",
         }
 
@@ -228,6 +231,7 @@ async def _handle_audio_chunk(
             "chunk_index": chunk_index,
             "converted_text": "",
             "transcripts": [],
+            **_current_risk_fields(log_id),
             "message": "전사된 발화가 없습니다.",
         }
 
@@ -252,3 +256,16 @@ def _parse_ws_json(raw_text: str) -> dict:
         raise ValueError("WebSocket JSON 메시지는 객체여야 합니다.")
 
     return payload
+
+
+def _current_risk_fields(log_id: int) -> dict:
+    """분석을 새로 못 한 응답에도 현재 통화 위험도 필드를 포함한다."""
+    try:
+        call = get_call_log(log_id)
+    except Exception:
+        return {"risk_score": 0.0, "risk_level": "low"}
+
+    return {
+        "risk_score": round(call.risk_score, 4),
+        "risk_level": call.risk_level,
+    }

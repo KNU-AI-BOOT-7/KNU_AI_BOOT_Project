@@ -138,21 +138,36 @@ async def analyze_call_audio(
             file_type="recording",
         )
     )
+    saved_messages = []
     for turn_index, segment in enumerate(segments, start=1):
-        insert_call_message(
-            log_id=call.id,
-            message=CallMessageCreate(
-                content=segment["text"],
-                turn_index=turn_index,
-            ),
+        saved_messages.append(
+            insert_call_message(
+                log_id=call.id,
+                message=CallMessageCreate(
+                    content=segment["text"],
+                    turn_index=turn_index,
+                ),
+            )
         )
 
     detection = await asyncio.to_thread(call_analyzer.detect_and_persist, log_id=call.id, top_k=top_k)
+    converted_text = "\n".join(message.content for message in saved_messages)
 
     return {
         "type": "audio_analysis",
         "log_id": call.id,
         "file_name": file.filename,
+        "message_ids": [message.id for message in saved_messages],
+        "converted_text": converted_text,
+        "transcripts": [
+            {
+                "message_id": message.id,
+                "turn_index": message.turn_index,
+                "start_time": segment["start_time"],
+                "end_time": segment["end_time"],
+            }
+            for message, segment in zip(saved_messages, segments)
+        ],
         "segments": segments,
         "is_phishing": detection["is_phishing"],
         "risk_score": detection["risk_score"],

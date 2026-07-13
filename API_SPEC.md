@@ -195,6 +195,16 @@ curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
   "type": "audio_analysis",
   "log_id": 11,
   "file_name": "call.m4a",
+  "message_ids": [21],
+  "converted_text": "서울중앙지검입니다.",
+  "transcripts": [
+    {
+      "message_id": 21,
+      "turn_index": 1,
+      "start_time": 0.0,
+      "end_time": 3.2
+    }
+  ],
   "segments": [
     {
       "chunk_id": 1,
@@ -293,8 +303,6 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
     {
       "message_id": 12,
       "turn_index": 1,
-      "content": "안녕하세요. 카드 결제일 문의드립니다.",
-      "converted_text": "안녕하세요. 카드 결제일 문의드립니다.",
       "start_time": 0.0,
       "end_time": 3.1
     }
@@ -319,8 +327,6 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
     {
       "message_id": 13,
       "turn_index": 3,
-      "content": "서울중앙지검입니다. 계좌가 범죄에 연루되었습니다.",
-      "converted_text": "서울중앙지검입니다. 계좌가 범죄에 연루되었습니다.",
       "start_time": 0.0,
       "end_time": 3.8
     }
@@ -350,6 +356,8 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
   "type": "audio_chunk_error",
   "log_id": 1,
   "chunk_index": 1,
+  "risk_score": 0.2,
+  "risk_level": "low",
   "message": "오디오 chunk 전사에 실패했습니다: 전사 모듈 또는 오디오 파일을 확인하세요."
 }
 ```
