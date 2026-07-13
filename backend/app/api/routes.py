@@ -11,6 +11,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from backend.app.repository import (
     create_call_log,
+    get_call_conversation_response,
     get_call_log_detail_response,
     get_call_log_list_response,
     insert_call_message,
@@ -19,6 +20,7 @@ from backend.app.repository import (
     parse_training_cases_json,
 )
 from backend.app.schemas import (
+    CallConversationResponse,
     CallLogCreate,
     CallLogDetail,
     CallLogListResponse,
@@ -49,6 +51,15 @@ def get_call_detail(log_id: int) -> CallLogDetail:
     """단일 통화 기록의 피싱 유형, 주요 키워드, 근거를 반환한다."""
     try:
         return get_call_log_detail_response(log_id=log_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/calls/{log_id}/messages", response_model=CallConversationResponse)
+def get_call_messages(log_id: int) -> CallConversationResponse:
+    """단일 통화 기록에 저장된 대화 내역을 반환한다."""
+    try:
+        return get_call_conversation_response(log_id=log_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

@@ -226,6 +226,7 @@ async def _handle_audio_chunk(
             "type": "audio_chunk_ack",
             "log_id": log_id,
             "chunk_index": chunk_index,
+            "converted_text": "",
             "transcripts": [],
             "message": "전사된 발화가 없습니다.",
         }

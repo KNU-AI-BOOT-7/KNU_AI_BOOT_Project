@@ -146,7 +146,36 @@ curl "http://127.0.0.1:8000/calls/10"
 }
 ```
 
-## 6. 녹음 파일 분석
+## 6. 통화 대화 내역 조회
+
+```http
+GET /calls/{log_id}/messages
+```
+
+요청:
+
+```bash
+curl "http://127.0.0.1:8000/calls/10/messages"
+```
+
+응답:
+
+```json
+{
+  "log_id": 10,
+  "messages": [
+    {
+      "id": 21,
+      "log_id": 10,
+      "turn_index": 1,
+      "content": "안녕하세요. 카드 결제일 문의드립니다.",
+      "created_at": "2026-07-09 10:20:35"
+    }
+  ]
+}
+```
+
+## 7. 녹음 파일 분석
 
 ```http
 POST /calls/analyze-audio
@@ -186,7 +215,7 @@ curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
 
 녹음 파일 분석은 `mp3`, `wav`, `m4a` 업로드를 지원합니다. `m4a`는 서버에서 임시 `wav`로 변환한 뒤 `backend.app.mp3_json` 전사 모듈에 전달합니다.
 
-## 7. 실시간 통화 분석
+## 8. 실시간 통화 분석
 
 ```text
 WS /ws/calls/analyze
@@ -259,11 +288,13 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
   "log_id": 1,
   "chunk_index": 1,
   "message_ids": [12],
+  "converted_text": "안녕하세요. 카드 결제일 문의드립니다.",
   "transcripts": [
     {
       "message_id": 12,
       "turn_index": 1,
       "content": "안녕하세요. 카드 결제일 문의드립니다.",
+      "converted_text": "안녕하세요. 카드 결제일 문의드립니다.",
       "start_time": 0.0,
       "end_time": 3.1
     }
@@ -283,11 +314,13 @@ KoELECTRA 모델이 없으면 RAG 기반 위험도로 대체합니다.
   "log_id": 1,
   "chunk_index": 3,
   "message_ids": [13],
+  "converted_text": "서울중앙지검입니다. 계좌가 범죄에 연루되었습니다.",
   "transcripts": [
     {
       "message_id": 13,
       "turn_index": 3,
       "content": "서울중앙지검입니다. 계좌가 범죄에 연루되었습니다.",
+      "converted_text": "서울중앙지검입니다. 계좌가 범죄에 연루되었습니다.",
       "start_time": 0.0,
       "end_time": 3.8
     }

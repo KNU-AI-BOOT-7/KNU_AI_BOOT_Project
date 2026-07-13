@@ -124,6 +124,13 @@ class CallMessage(BaseModel):
     created_at: str
 
 
+class CallConversationResponse(BaseModel):
+    """통화 로그에 저장된 대화 내역."""
+
+    log_id: int
+    messages: list[CallMessage]
+
+
 class NotificationCreate(BaseModel):
     """위험 탐지 시 클라이언트 또는 사용자에게 보낸 알림 기록."""
 

@@ -7,6 +7,7 @@ from typing import Any
 
 from backend.app.database import get_connection
 from backend.app.schemas import (
+    CallConversationResponse,
     CallLogDetail,
     CallLogListItem,
     CallLogListResponse,
@@ -391,6 +392,15 @@ def get_call_log_detail_response(log_id: int) -> CallLogDetail:
         phishing_type=_display_phishing_type(dict(call_row)),
         matched_patterns=matched_patterns,
         core_evidence=core_evidence,
+    )
+
+
+def get_call_conversation_response(log_id: int) -> CallConversationResponse:
+    """통화 로그에 저장된 전체 대화 내역을 조회한다."""
+    get_call_log(log_id)
+    return CallConversationResponse(
+        log_id=log_id,
+        messages=list_call_messages(log_id),
     )
 
 

@@ -122,6 +122,7 @@ def build_client_text_analysis_response(log_id: int, message: dict, detection: d
             "type": "analysis_ack",
             "log_id": log_id,
             "message_id": message["id"],
+            "converted_text": message["content"],
             "is_phishing": False,
             "risk_score": detection["risk_score"],
             "risk_level": detection["risk_level"],
@@ -132,6 +133,7 @@ def build_client_text_analysis_response(log_id: int, message: dict, detection: d
         "type": "phishing_detected",
         "log_id": log_id,
         "message_id": message["id"],
+        "converted_text": message["content"],
         "is_phishing": True,
         "risk_score": detection["risk_score"],
         "risk_level": detection["risk_level"],
@@ -150,15 +152,18 @@ def build_client_audio_analysis_response(
     detection: dict,
 ) -> dict:
     """실시간 오디오 chunk 전사/분석 결과를 클라이언트 응답 형태로 만든다."""
+    converted_text = "\n".join(message["content"] for message in saved_messages)
     base_response = {
         "log_id": log_id,
         "chunk_index": chunk_index,
         "message_ids": [message["id"] for message in saved_messages],
+        "converted_text": converted_text,
         "transcripts": [
             {
                 "message_id": message["id"],
                 "turn_index": message["turn_index"],
                 "content": message["content"],
+                "converted_text": message["content"],
                 "start_time": segment["start_time"],
                 "end_time": segment["end_time"],
             }
