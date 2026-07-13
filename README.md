@@ -1,5 +1,12 @@
 # KNU_AI_BOOT_Project_7조
 
+## 멤버
+- 이재현 ( 자료 조사 및 발표 )
+- 장지훈 ( 디자인 및 프론트엔드 개발 )
+- 박준영 (RAG + 규칙 기반 탐지, API 개발)
+- 최세민 (AI 모델 학습 및 전처리, API 개발)
+
+
 ## 보이스피싱 탐지 및 예방 AI 서비스
 
 실시간 통화 음성을 받아 전사하고, 누적 통화 내용을 기반으로 보이스피싱 위험도와 핵심 근거를 반환하는 FastAPI 백엔드입니다.
@@ -118,26 +125,3 @@ http://127.0.0.1:8000/docs
 | GET | `/training-cases` | 저장된 학습 사례 조회 |
 
 상세 요청/응답은 [API_SPEC.md](API_SPEC.md)를 참고합니다.
-
-## WebSocket 시작 예시
-
-```json
-{
-  "type": "start",
-  "device_id": 1,
-  "name": "010-1234-5678",
-  "audio_format": "m4a"
-}
-```
-
-이후 클라이언트는 3~4초 단위의 mp3/wav/m4a binary frame을 전송합니다.
-
-## 녹음 파일 분석 예시
-
-```bash
-curl -X POST "http://127.0.0.1:8000/calls/analyze-audio?device_id=1" \
-  -F "file=@call.m4a"
-```
-
-
-모델이 없으면 서버는 RAG/규칙 기반 위험도로 대체합니다.
